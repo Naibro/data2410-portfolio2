@@ -6,6 +6,9 @@
 '''
 
 from struct import *
+import socket
+socket_object = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+socket_object.bind(("127.0.0.1", 1111))
 
 # I integer (unsigned long) = 4bytes and H (unsigned short integer 2 bytes)
 # see the struct official page for more info
@@ -18,6 +21,7 @@ print(f'size of the header = {calcsize(header_format)}')
 
 def create_packet(seq, ack, flags, win, data):
     # creates a packet with header information and application data
+    data="Hello world"
     # the input arguments are sequence number, acknowledgment number
     # flags (we only use 4 bits),  receiver window and application data
     # struct.pack returns a bytes object containing the header values
