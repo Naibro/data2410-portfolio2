@@ -8,13 +8,15 @@
 from struct import *
 import socket
 socket_object = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-socket_object.bind(("127.0.0.1", 1111))
+server_address = ("127.0.0.1", 1111)
+socket_object.bind(server_address)
+
+receiver_address = ("127.0.0.2", 1112)
 
 # I integer (unsigned long) = 4bytes and H (unsigned short integer 2 bytes)
 # see the struct official page for more info
 
 header_format = '!IIHH'
-ho
 
 # print the header size: total = 12
 print(f'size of the header = {calcsize(header_format)}')
@@ -22,7 +24,6 @@ print(f'size of the header = {calcsize(header_format)}')
 
 def create_packet(seq, ack, flags, win, data):
     # creates a packet with header information and application data
-    data="Hello world"
     # the input arguments are sequence number, acknowledgment number
     # flags (we only use 4 bits),  receiver window and application data
     # struct.pack returns a bytes object containing the header values
@@ -57,7 +58,7 @@ def parse_flags(flags):
 # now let's create a packet with sequence number 1
 print('\n\ncreating a packet')
 
-data = b'0' * 1460
+data = b"Hello world!"  #b'0' * 1460
 print(f'app data for size ={len(data)}')
 
 sequence_number = 1
@@ -67,6 +68,12 @@ flags = 0  # we are not going to set any flags when we send a data packet
 
 # msg now holds a packet, including our custom header and data
 msg = create_packet(sequence_number, acknowledgment_number, flags, window, data)
+socket_object.sendto(msg, receiver_address)
+
+
+# Client
+receiver_object = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+msg, server_address = receiver_object.recv(1024)
 
 # now let's look at the header
 # we already know that the header is in the first 12 bytes
@@ -84,9 +91,10 @@ print(f'seq={seq}, ack={ack}, flags={flags}, recevier-window={win}')
 # the application data of 1460 bytes
 data_from_msg = msg[12:]
 print(len(data_from_msg))
+print(data.decode())
 
 # let's mimic an acknowledgment packet from the receiver-end
-# now let's create a packet with acknowledgement number 1
+# now let's create a packet with acknowledgment number 1
 # an acknowledgment packet from the receiver should have no data
 # only the header with acknowledgment number, ack_flag=1, win=6400
 data = b''
