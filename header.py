@@ -11,6 +11,7 @@ from struct import *
 # see the struct official page for more info
 
 header_format = '!IIHH'
+ho
 
 # print the header size: total = 12
 print(f'size of the header = {calcsize(header_format)}')
