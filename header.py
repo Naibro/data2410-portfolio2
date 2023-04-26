@@ -2,16 +2,21 @@
     #Utility functions: 1) to create a packet of 1472 bytes with header (12 bytes) (sequence number, acknowledgement number,
     #flags and receiver window) and applicaton data (1460 bytes), and 2) to parse
     # the extracted header from the application data.
-
 '''
 
 from struct import *
 import socket
-socket_object = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-server_address = ("127.0.0.1", 1111)
-socket_object.bind(server_address)
+import time
 
-receiver_address = ("127.0.0.2", 1112)
+# SENDER SOCKET (CLIENT) #
+sender_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sender_address = ("127.0.0.2", 1111)
+sender_socket.bind(sender_address)
+
+# RECEIVER SOCKET (SERVER) #
+receiver_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+receiver_address = ("127.0.0.1", 6969)
+receiver_socket.bind(receiver_address)
 
 # I integer (unsigned long) = 4bytes and H (unsigned short integer 2 bytes)
 # see the struct official page for more info
@@ -54,28 +59,47 @@ def parse_flags(flags):
     fin = flags & (1 << 1)
     return syn, ack, fin
 
+alldata = 'e' * 6000
+# Send the content of the requested file to the server
+for i in range(0, len(alldata) % 1460):
+    sequence_number = 1
+    acknowledgment_number = 0
+    window = 0  # window value should always be sent from the receiver-side
+    flags = 0  # we are not going to set any flags when we send a data packet
 
-# now let's create a packet with sequence number 1
-print('\n\ncreating a packet')
+    # now let's create a packet with sequence number 1
+    print('\n\ncreating a packet')
 
-data = b"Hello world!"  #b'0' * 1460
-print(f'app data for size ={len(data)}')
+    data = alldata[(1460 * (sequence_number - 1)):(1460 * sequence_number)]
+    print(f'app data for size ={len(data)}')
+    # msg now holds a packet, including our custom header and data
+    msg = create_packet(sequence_number, acknowledgment_number, flags, window, data)
 
-sequence_number = 1
-acknowledgment_number = 0
-window = 0  # window value should always be sent from the receiver-side
-flags = 0  # we are not going to set any flags when we send a data packet
+    deadline = time.time() + 0.5  # deadline in 500ms
+    # While loop to assure sending
+    while True:
+        # send
+        sender_socket.sendto(msg, receiver_address)
 
-# msg now holds a packet, including our custom header and data
-msg = create_packet(sequence_number, acknowledgment_number, flags, window, data)
-socket_object.sendto(msg, receiver_address)
+        try:
+            # listens for ack
+            ack_msg = sender_socket.recv(12)
+            sender_socket.settimeout(0.5)
+            seq, ack, flags, win = parse_header(ack_msg)  # it's an ack message with only the header
+            # checks for ack
+            if ack == sequence_number:
+                break
+        except:
+            print("ack timed out")
+
+        print("resending packet")
+    sequence_number += 1
 
 
 # Client
-receiver_object = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-msg, server_address = receiver_object.recv(1024)
+msg = receiver_socket.recv(1472)
 
-# now let's look at the header
+# now let's look at the headerL
 # we already know that the header is in the first 12 bytes
 
 header_from_msg = msg[:12]
