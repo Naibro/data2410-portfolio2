@@ -7,6 +7,37 @@
 from struct import *
 import socket
 import time
+import argparse
+import sys
+import ipaddress
+
+# ARGUMENT PARSER #
+parser = argparse.ArgumentParser(
+    prog='simpleperf',
+    description='Sends packets between a client and a server')
+
+# Arguments used for the server
+parser.add_argument('-s', '--server', action='store_true', help='enable server mode')
+parser.add_argument('-b', '--bind', type=str, default='127.0.0.1', help='allows selection of an ip-address')
+
+# Arguments common for both server and client
+parser.add_argument('-p', '--port', type=int, default=8088,
+                    help='allows selection of a port', metavar='[1024-65535]')
+parser.add_argument('-f', '--format', choices=['B', 'KB', 'MB'], default='MB',
+                    help='allows changing of the format of the summary')
+
+# Arguments used for the client
+parser.add_argument('-c', '--client', action='store_true', help='enable client mode')
+parser.add_argument('-I', '--serverip', type=str, default='127.0.0.1',
+                    help='allows selection of the servers ip-address')
+parser.add_argument('-t', '--time', type=int, choices=range(1, 61), metavar='[1-60]', default=25,
+                    help='total duration in seconds for which data should be set')
+parser.add_argument('-i', '--interval', type=int, choices=range(1, 30), metavar='[1-30]',
+                    help='print stats per z second')
+parser.add_argument('-n', '--num', type=str,
+                    help='transfer a set number of bytes')
+
+args = parser.parse_args()  # To start the argument parser and its arguments
 
 # SENDER SOCKET (CLIENT) #
 sender_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -25,6 +56,41 @@ header_format = '!IIHH'
 
 # print the header size: total = 12
 print(f'size of the header = {calcsize(header_format)}')
+
+
+# A function that checks that the IP-address is valid #
+def check_ip(address):
+    # Tries to take an IP-address in
+    try:
+        val = ipaddress.ip_address(address)
+        print(f"The IP address {val} is valid.")
+
+    # If it does not work, an error is raised
+    except ValueError:
+        print(f"The IP address is {address} not valid")
+
+
+# A function that checks that the port is valid #
+def check_port(val):
+    # Tries to take a port in, making it to an integer
+    try:
+        value = int(val)
+    # If not, it raises an error
+    except ValueError:
+        raise argparse.ArgumentTypeError('expected an integer but you entered a string')
+    # Also, if the input is over 65535, the system will print an error msg and exit
+    if value > 65535:
+        print('port cannot be higher than 65535')
+        sys.exit()
+    # The same happens if the port is less than 1024
+    elif 0 <= value < 1024:
+        print('port cannot be less than 1024')
+        sys.exit()
+    # And even when the input of the port is a negative value
+    elif value < 0:
+        print('port cannot be a negative integer')
+        sys.exit()
+    return value  # Lastly, the checked port will be returned and used in the program
 
 
 def create_packet(seq, ack, flags, win, data):
@@ -59,6 +125,7 @@ def parse_flags(flags):
     fin = flags & (1 << 1)
     return syn, ack, fin
 
+
 alldata = 'e' * 6000
 # Send the content of the requested file to the server
 for i in range(0, len(alldata) % 1460):
@@ -89,14 +156,13 @@ for i in range(0, len(alldata) % 1460):
             # checks for ack
             if ack == sequence_number:
                 break
-        except:
-            print("ack timed out")
+        except TimeoutError as e:
+            print(e, "ack timed out")
 
         print("resending packet")
     sequence_number += 1
 
-
-# Client
+# Server
 msg = receiver_socket.recv(1472)
 
 # now let's look at the headerL
