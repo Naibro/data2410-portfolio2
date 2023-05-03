@@ -13,7 +13,6 @@ import time
 import argparse
 import sys
 import ipaddress
-import DRTP
 
 # ARGUMENT PARSER #
 parser = argparse.ArgumentParser(
@@ -108,9 +107,12 @@ def parse_header(header):
 def parse_flags(flags):
     # we only parse the first 3 fields because we're not
     # using rst in our implementation
-    syn = flags & (1 << 3)
-    ack = flags & (1 << 2)
-    fin = flags & (1 << 1)
+    #syn = flags & (1 << 3)
+    #ack = flags & (1 << 2)
+    #fin = flags & (1 << 1)
+    syn = flags // 8
+    ack = flags % 8 // 4
+    fin = flags % 4 // 2
     return syn, ack, fin
 
 
@@ -120,125 +122,124 @@ def send_format(file, seq):
 
 def stop_and_wait_c():
     # CLIENT
-    alldata = 'e' * 6000
+    alldata = b'e' * 6344
     # Send the content of the requested file to the server
     for i in range(0, len(alldata) % 1460):
         sequence_number = 1
         acknowledgment_number = 0
-        window = 0  # window value should always be sent from the receiver-side
         flags = 0  # we are not going to set any flags when we send a data packet
+        window = 0  # window value should always be sent from the receiver-side
 
-        # now let's create a packet with sequence number 1
+        # creates a packet with sequence number 1
         print('\n\ncreating a packet')
-
-        body = alldata[(1460 * (sequence_number - 1)):(1460 * sequence_number)]
+        body = alldata[:1460]
         print(f'app data for size ={len(body)}')
         # msg now holds a packet, including our custom header and data
         msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
 
-        deadline = time.time() + 0.5  # deadline in 500ms
         # While loop to assure sending
         while True:
-            # send
+            if len(alldata) / 1460 > 1:
+                body = alldata[(1460 * (sequence_number - 1)):(1460 * sequence_number)]
+            # Last sequence
+            else:
+                body = alldata[(1460 * (sequence_number - 1)):]
+                flags = 2
+                print("Last sequence!")
+
+            # Send packet and set the timer
             sender_socket.sendto(msg, receiver_address)
+            sender_socket.settimeout(0.5)
 
             try:
-                # listens for ack
+                # listens for ack from server that the packet has been recevied
                 ack_msg = sender_socket.recv(12)
-
-                sender_socket.settimeout(0.5)
                 seq, ack, flags, win = parse_header(ack_msg)  # it's an ack message with only the header
-                # checks for ack
-                if ack == sequence_number:
-                    break
-            except TimeoutError as e:
+
+                ack = sequence_number
+
+            except ConnectionError as e:
                 print(e, "ack timed out")
 
-            print("resending packet")
-        sequence_number = seq + 1
+
 
 
 def stop_and_wait_s():
     # SERVER
-    alldata = receiver_socket.recv(1472)
+    msg, sender_address = receiver_socket.recvfrom(1472)
     # Receive the content of the file from client
-    for i in range(0, len(alldata) % 1460):
+    # Header is in the first 12 bytes
+    header_from_msg = alldata[:12]
+    print(len(header_from_msg))
 
-        # now let's look at the headerL
-        # we already know that the header is in the first 12 bytes
+    # now we get the header from the parse_header function
+    # which unpacks the values based on the header_format that
+    # we specified
+    seq, ack, flags, win = parse_header(header_from_msg)
+    print(f'seq={seq}, ack={ack}, flags={flags}, recevier-window={win}')
 
-        header_from_msg = alldata[:12]
-        print(len(header_from_msg))
+    # let's extract the data_from_msg that holds
+    # the application data of 1460 bytes
+    data_from_msg = alldata[12:]
+    print(len(data_from_msg))
 
-        # now we get the header from the parse_header function
-        # which unpacks the values based on the header_format that
-        # we specified
-        seq, ack, flags, win = parse_header(header_from_msg)
-        print(f'seq={seq}, ack={ack}, flags={flags}, recevier-window={win}')
+    # let's mimic an acknowledgment packet from the receiver-end
+    # now let's create a packet with acknowledgment number 1
+    # an acknowledgment packet from the receiver should have no data
+    # only the header with acknowledgment number, ack_flag=1, win=6400
+    body = b''
+    print('\n\nCreating an acknowledgment packet:')
+    print(f'this is an empty packet with no data ={len(body)}')
 
-        # let's extract the data_from_msg that holds
-        # the application data of 1460 bytes
-        data_from_msg = alldata[12:]
-        print(len(data_from_msg))
+    sequence_number = 0
+    acknowledgment_number = 1  # an ack for the last sequnce
+    window = 0  # window value should always be sent from the receiver-side
 
-        # let's mimic an acknowledgment packet from the receiver-end
-        # now let's create a packet with acknowledgment number 1
-        # an acknowledgment packet from the receiver should have no data
-        # only the header with acknowledgment number, ack_flag=1, win=6400
-        body = b''
-        print('\n\nCreating an acknowledgment packet:')
-        print(f'this is an empty packet with no data ={len(body)}')
+    # let's look at the last 4 bits:  S A F R
+    # 0 0 0 0 represents no flags
+    # 0 1 0 0  ack flag set, and the decimal equivalent is 4
+    flags = 4
 
-        sequence_number = 0
-        acknowledgment_number = 1  # an ack for the last sequnce
-        window = 0  # window value should always be sent from the receiver-side
+    msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
+    print(f'this is an acknowledgment packet of header size={len(msg)}')
 
-        # let's look at the last 4 bits:  S A F R
-        # 0 0 0 0 represents no flags
-        # 0 1 0 0  ack flag set, and the decimal equivalent is 4
-        flags = 4
+    # let's parse the header
+    seq, ack, flags, win = parse_header(msg)  # it's an ack message with only the header
+    print(f'seq={seq}, ack={ack}, flags={flags}, receiver-window={win}')
 
-        msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
-        print(f'this is an acknowledgment packet of header size={len(msg)}')
+    # now let's parse the flag field
+    syn, ack, fin = parse_flags(flags)
 
-        # let's parse the header
-        seq, ack, flags, win = parse_header(msg)  # it's an ack message with only the header
-        print(f'seq={seq}, ack={ack}, flags={flags}, receiver-window={win}')
+    sequence_number = 0
+    acknowledgment_number = 1
+    window = 0  # window value should always be sent from the receiver-side
+    flags = 0  # we are not going to set any flags when we send a data packet
 
-        # now let's parse the flag field
-        syn, ack, fin = parse_flags(flags)
+    # now let's create a packet with sequence number and ack 1
+    print('\n\ncreating a packet')
 
-        sequence_number = 1
-        acknowledgment_number = 1
-        window = 0  # window value should always be sent from the receiver-side
-        flags = 0  # we are not going to set any flags when we send a data packet
+    body = b''
+    # msg now holds a packet, including our custom header and data
+    msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
 
-        # now let's create a packet with sequence number and ack 1
-        print('\n\ncreating a packet')
+    # While loop to assure sending
+    while True:
+        # send ACK
+        receiver_socket.sendto(msg, sender_address)
 
-        body = alldata[(1460 * (sequence_number - 1)):(1460 * sequence_number)]
-        print(f'app data for size ={len(body)}')
-        # msg now holds a packet, including our custom header and data
-        msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
+        try:
+            # if packet OK
+            ack_msg = sender_socket.recv(12)
 
-        # While loop to assure sending
-        while True:
-            # send ACK
-            sender_socket.sendto(msg, sender_address)
+            sender_socket.settimeout(0.5)
+            seq, ack, flags, win = parse_header(ack_msg)  # it's an ack message with only the header
+            # checks for ack
+            if ack == sequence_number:
+                break
+        except TimeoutError as e:
+            print(e, "ack timed out")
 
-            try:
-                # if packet OK
-                ack_msg = sender_socket.recv(12)
-
-                sender_socket.settimeout(0.5)
-                seq, ack, flags, win = parse_header(ack_msg)  # it's an ack message with only the header
-                # checks for ack
-                if ack == sequence_number:
-                    break
-            except TimeoutError as e:
-                print(e, "ack timed out")
-
-            print("resending packet")
+        print("resending packet")
 
 
 def GBN_c():
@@ -259,14 +260,11 @@ def SR_s():
 
 # Global variables
 #receiver_address = (args.ipaddress, args.port)
-ip = args.ipaddress
-port = args.port
-sender_address = (args.ipaddress, args.port)
 
 # SENDER SOCKET (CLIENT) #
 if args.client:
     sender_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sender_socket.connect(receiver_address)
+    receiver_address = (args.ipaddress, args.port)
 
     # ESTABLISH A CONNECTION FIRST #
     sequence_number = 0
@@ -280,13 +278,16 @@ if args.client:
     # Sends SYN
     msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
     sender_socket.sendto(msg, receiver_address)
+    print("SYN sent")
 
     try:
-        sender_socket.settimeout(0.5)
+        sender_socket.settimeout(1)
+        print("Setting timeout")
         # Waits for SYN ACK
-        ack_msg = sender_socket.recv(12)
-        seq, ack, flags, win = parse_header(ack_msg)  # SYN ACK message with only header and only flags set to 1 0 0 0
+        syn_ack_msg = sender_socket.recv(12)
+        seq, ack, flags, win = parse_header(syn_ack_msg)  # SYN ACK message with only header and only flags set to 1 0 0 0
         SYN, ACK, FIN = parse_flags(flags)
+        print(f"SYN ACK received - flags: {SYN, ACK, FIN}")
 
         if SYN == 1 and ACK == 1:
             sequence_number = 0
@@ -298,8 +299,8 @@ if args.client:
             flags = 4  # 0 1 0 0  ACK flag
             msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
             sender_socket.sendto(msg, receiver_address)
-
-
+            print("ACK sent")
+            print("Connection established..")
     except ConnectionError as e:
         print("Error", e)
 
@@ -315,15 +316,13 @@ if args.client:
 # RECEIVER SOCKET (SERVER) #
 elif args.server:
     receiver_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    #receiver_socket.bind((args.ipaddress, args.port))
 
     # Attempting to bind server's port and IP
+    # START-UP #
     try:
-        receiver_socket.bind((ip, port))
-
         # Waiting for connections
-        receiver_socket.listen(1)
         startupMsg = "A server is listening on port " + str(args.port)
+        receiver_socket.bind((args.ipaddress, args.port))
 
         # Output with dashes
         print("-" * len(startupMsg))
@@ -335,15 +334,18 @@ elif args.server:
         print('Bind failed..', e)
         sys.exit()
 
+    # ESTABLISH A CONNECTION #
     while True:
         # Waits for SYN from client
-        syn_msg = receiver_socket.recv(12)
+        syn_msg, sender_address = receiver_socket.recvfrom(12)
 
         seq, ack, flags, win = parse_header(syn_msg)  # SYN ACK message with only header and only flags set to 1 0 0 0
 
         SYN, ACK, FIN = parse_flags(flags)
+        print(f"flags: {SYN, ACK, FIN}")
 
         if SYN == 1:
+            print("SYN received")
             # sends syn-ack
             sequence_number = 0
             acknowledgment_number = 0  # an ack for the last sequnce
@@ -356,6 +358,7 @@ elif args.server:
             # Sends SYN ACK
             msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
             receiver_socket.sendto(msg, sender_address)
+            print("SYNACK sent")
         elif ACK == 1:
             print("Ready to receive a file!")
 
