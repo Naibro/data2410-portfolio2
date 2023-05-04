@@ -9,15 +9,14 @@
 
 from struct import *
 import socket
-import time
 import argparse
 import sys
 import ipaddress
 
 # ARGUMENT PARSER #
 parser = argparse.ArgumentParser(
-    prog='simpleperf',
-    description='Sends packets between a client and a server')
+    prog='DRTP application',
+    description='Transfers a file between a client and a server using DRTP')
 
 # Arguments used for the client/sender
 parser.add_argument('-c', '--client', action='store_true', help='enable client mode')
@@ -31,33 +30,38 @@ parser.add_argument('-p', '--port', type=int, default=8088, help='allows selecti
 parser.add_argument('-i', '--ipaddress', type=str, default='127.0.0.1', help='allows selection of an ip-address')
 parser.add_argument('-r', '--reliability', choices=['stop-and-wait', 'GBN', 'SR'], required=True,
                     help='allows selection of different reliability functions')
-parser.add_argument('-t', '--test_case', type=str, choices=['1', 'GBN', 'SR'],
+parser.add_argument('-t', '--test_case', type=str, choices=['1', '2', '3'],
                     help='allows selection of a test case to be run')
 
-args = parser.parse_args()  # To start the argument parser and its arguments
+args = parser.parse_args()  # Start the argument parser and its arguments
+
+# MAIN PROGRAM #
 
 # I integer (unsigned long) = 4bytes and H (unsigned short integer 2 bytes)
 # see the struct official page for more info
 
 header_format = '!IIHH'
 
+
 # print the header size: total = 12
-print(f'size of the header = {calcsize(header_format)}')
+# print(f'size of the header = {calcsize(header_format)}')
 
 
-# A function that checks that the IP-address is valid #
+# A function that checks that the IP-address is valid
 def check_ip(address):
     # Tries to take an IP-address in
     try:
+        # IP-address is valid
         val = ipaddress.ip_address(address)
-        print(f"The IP address {val} is valid.")
+        # print(f"The IP address {val} is valid.")
 
     # If it does not work, an error is raised
     except ValueError:
         print(f"The IP address is {address} not valid")
+        sys.exit()
 
 
-# A function that checks that the port is valid #
+# A function that checks that the port is valid
 def check_port(val):
     # Tries to take a port in, making it to an integer
     try:
@@ -75,7 +79,7 @@ def check_port(val):
         sys.exit()
     # And even when the input of the port is a negative value
     elif value < 0:
-        print('port cannot be a negative integer')
+        print('port cannot be a negative value')
         sys.exit()
     return value  # Lastly, the checked port will be returned and used in the program
 
@@ -107,9 +111,9 @@ def parse_header(header):
 def parse_flags(flags):
     # we only parse the first 3 fields because we're not
     # using rst in our implementation
-    #syn = flags & (1 << 3)
-    #ack = flags & (1 << 2)
-    #fin = flags & (1 << 1)
+    # syn = flags & (1 << 3)
+    # ack = flags & (1 << 2)
+    # fin = flags & (1 << 1)
     syn = flags // 8
     ack = flags % 8 // 4
     fin = flags % 4 // 2
@@ -160,8 +164,6 @@ def stop_and_wait_c():
 
             except ConnectionError as e:
                 print(e, "ack timed out")
-
-
 
 
 def stop_and_wait_s():
@@ -258,71 +260,92 @@ def SR_s():
     pass
 
 
-# Global variables
-#receiver_address = (args.ipaddress, args.port)
+# Global variables #
+check_ip(args.ipaddress)
+check_port(args.port)
+ip = args.ipaddress
+port = args.port
 
+# If using both the --s and the --c flag (and reliability), the system will exit
+if args.server and args.client:
+    print("Error: you can not run both in server and client mode")
+    sys.exit()
 # SENDER SOCKET (CLIENT) #
-if args.client:
+elif args.client:
+    # Creating the sender socket and specifying the receiver address
     sender_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    receiver_address = (args.ipaddress, args.port)
+    receiver_address = (ip, port)
 
-    # ESTABLISH A CONNECTION FIRST #
+    # ESTABLISHING A CONNECTION FIRST #
     sequence_number = 0
     acknowledgment_number = 0  # an ack for the last sequence
     window = 0  # window value should always be sent from the receiver-side
     body = b''
 
-    # let's look at the last 4 bits:  S A F R - SYN ACK FIN RST
+    # S A F R - SYN ACK FIN RST
     flags = 8  # 1 0 0 0  SYN flag
 
-    # Sends SYN
+    # Sends SYN flag to initiate the thee-way handshake
     msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
     sender_socket.sendto(msg, receiver_address)
-    print("SYN sent")
+    print("SYN sent!")
+
+    # Setting timeout
+    sender_socket.settimeout(1)
+    print("Setting timeout..")
 
     try:
-        sender_socket.settimeout(1)
-        print("Setting timeout")
-        # Waits for SYN ACK
+        # Try to receive SYN ACK from server
         syn_ack_msg = sender_socket.recv(12)
-        seq, ack, flags, win = parse_header(syn_ack_msg)  # SYN ACK message with only header and only flags set to 1 0 0 0
+
+        # Parsing the header
+        seq, ack, flags, win = parse_header(syn_ack_msg)  # SYN ACK -> only header with flags set to: 1 1 0 0
         SYN, ACK, FIN = parse_flags(flags)
-        print(f"SYN ACK received - flags: {SYN, ACK, FIN}")
 
         if SYN == 1 and ACK == 1:
+            print(f"SYN ACK received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
+
             sequence_number = 0
             acknowledgment_number = 0  # an ack for the last sequence
             window = 0  # window value should always be sent from the receiver-side
             body = b''
 
-            # let's look at the last 4 bits:  S A F R - SYN ACK FIN RST
+            # S A F R - SYN ACK FIN RST
             flags = 4  # 0 1 0 0  ACK flag
             msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
+
+            # Sending ACK to confirm an established connection
             sender_socket.sendto(msg, receiver_address)
             print("ACK sent")
             print("Connection established..")
-    except ConnectionError as e:
-        print("Error", e)
+        else:
+            print("Something was received, but it was not SYN ACK", syn_ack_msg)
+            sys.exit()
+    except Exception as e:
+        print("Didn't receive a SYN ACK", e)
+        sys.exit()
 
+    # When a connection is established, the chosen -r argument will start its respective method
     if args.reliability == "stop-and-wait":
         stop_and_wait_c()
     elif args.reliability == "GBN":
         GBN_c()
     elif args.reliability == "SR":
         SR_c()
+        # Fjerne hele else-statementen?
     else:
-        print("Du må faen meg skrive en metode")
+        print("Du er god hvis du greier å komme hit. Faen meg skriv en metode")
 
 # RECEIVER SOCKET (SERVER) #
 elif args.server:
+    # Creating the receiver socket and specifying the receiver address
     receiver_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     # Attempting to bind server's port and IP
-    # START-UP #
     try:
-        # Waiting for connections
-        startupMsg = "A server is listening on port " + str(args.port)
-        receiver_socket.bind((args.ipaddress, args.port))
+        # Start-up
+        receiver_socket.bind((ip, port))
+        startupMsg = "A server is listening on port " + str(port)
 
         # Output with dashes
         print("-" * len(startupMsg))
@@ -334,32 +357,33 @@ elif args.server:
         print('Bind failed..', e)
         sys.exit()
 
-    # ESTABLISH A CONNECTION #
+    # ESTABLISHING CONNECTION #
     while True:
-        # Waits for SYN from client
-        syn_msg, sender_address = receiver_socket.recvfrom(12)
+        # Waits for the SYN from client
+        syn_or_ack, sender_address = receiver_socket.recvfrom(12)
 
-        seq, ack, flags, win = parse_header(syn_msg)  # SYN ACK message with only header and only flags set to 1 0 0 0
-
+        # Parsing the header
+        seq, ack, flags, win = parse_header(syn_or_ack)  # SYN -> only header with flags set to: 1 0 0 0
         SYN, ACK, FIN = parse_flags(flags)
-        print(f"flags: {SYN, ACK, FIN}")
 
         if SYN == 1:
-            print("SYN received")
-            # sends syn-ack
+            print(f"SYN received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
+
+            # Sends SYN ACK
             sequence_number = 0
-            acknowledgment_number = 0  # an ack for the last sequnce
+            acknowledgment_number = 0  # an ack for the last sequence
             window = 0  # window value should always be sent from the receiver-side
             body = b''
 
-            # let's look at the last 4 bits:  S A F R - SYN ACK FIN RST
+            # S A F R - SYN ACK FIN RST
             flags = 12  # 1 1 0 0  SYN ACK flag
 
             # Sends SYN ACK
             msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
             receiver_socket.sendto(msg, sender_address)
-            print("SYNACK sent")
+            print("SYN ACK sent")
         elif ACK == 1:
+            print("ACK received")
             print("Ready to receive a file!")
 
             if args.reliability == "stop-and-wait":
@@ -368,6 +392,14 @@ elif args.server:
                 GBN_s()
             elif args.reliability == "SR":
                 SR_s()
+            # Fjerne hele else-statementen?
             else:
-                print("Du må faen meg skrive en metode")
-                sys.exit()
+                print("Du er god hvis du greier å komme hit. Faen meg skriv en metode")
+        else:
+            print("Something was received, but it was not an ACK", syn_or_ack)
+            sys.exit()
+
+# If neither the -s nor -c flag is specified (except reliability), the system will also exit
+else:
+    print("Error: you must run either in server or client mode")
+    sys.exit()
