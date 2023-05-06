@@ -31,7 +31,7 @@ parser.add_argument('-i', '--ipaddress', type=str, default='127.0.0.1', help='al
 parser.add_argument('-r', '--reliability', choices=['stop-and-wait', 'GBN', 'SR'], required=True,
                     help='allows selection of different reliability functions')
 parser.add_argument('-t', '--test_case', type=str, choices=['1', '2', '3'],
-                    help='allows selection of a test case to be run')
+                    help='selection of which test case to run')
 
 args = parser.parse_args()  # Start the argument parser and its arguments
 
@@ -95,7 +95,7 @@ def create_packet(seq, ack, flags, win, data):
     # once we create a header, we add the application data to create a packet
     # of 1472 bytes
     packet = header + data
-    print(f'packet containing header + data of size {len(packet)}')  # just to show the length of the packet
+    #print(f'packet containing header + data of size {len(packet)}')  # just to show the length of the packet
     return packet
 
 
@@ -288,7 +288,7 @@ elif args.client:
     # Sends SYN flag to initiate the thee-way handshake
     msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
     sender_socket.sendto(msg, receiver_address)
-    print("SYN sent!")
+    print("SYN sent")
 
     # Setting timeout
     sender_socket.settimeout(1)
@@ -332,9 +332,36 @@ elif args.client:
         GBN_c()
     elif args.reliability == "SR":
         SR_c()
-        # Fjerne hele else-statementen?
+    #Fjerne hele else-statementen?
     else:
         print("Du er god hvis du greier å komme hit. Faen meg skriv en metode")
+
+    # Closing of the connection
+    sequence_number = 0
+    acknowledgment_number = 0  # an ack for the last sequence
+    window = 0  # window value should always be sent from the receiver-side
+    body = b''
+
+    # S A F R - SYN ACK FIN RST
+    flags = 2  # 0 0 1 0  FIN flag
+    msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
+    sender_socket.sendto(msg, receiver_address)
+    print("FIN sent")
+
+    ack, sender_address = sender_socket.recvfrom(12)
+
+    # Parsing the header
+    seq, ack, flags, win = parse_header(ack)  # ACK -> only header with flags set to: 0 1 0 0
+    SYN, ACK, FIN = parse_flags(flags)
+
+    if ACK == 1:
+        print(f"ACK received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
+        print("Shutting down..")
+        sender_socket.close()
+        sys.exit()
+    else:
+        print("Something was received, but it was not an ACK:", ACK)
+        sys.exit()
 
 # RECEIVER SOCKET (SERVER) #
 elif args.server:
@@ -383,7 +410,7 @@ elif args.server:
             receiver_socket.sendto(msg, sender_address)
             print("SYN ACK sent")
         elif ACK == 1:
-            print("ACK received")
+            print(f"ACK received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
             print("Ready to receive a file!")
 
             if args.reliability == "stop-and-wait":
@@ -395,6 +422,32 @@ elif args.server:
             # Fjerne hele else-statementen?
             else:
                 print("Du er god hvis du greier å komme hit. Faen meg skriv en metode")
+
+            # Closing the connection
+            fin_msg, sender_address = receiver_socket.recvfrom(12)
+
+            # Parsing the header
+            seq, ack, flags, win = parse_header(fin_msg)  # FIN -> only header with flags set to: 0 0 1 0
+            SYN, ACK, FIN = parse_flags(flags)
+
+            if FIN == 1:
+                print(f"FIN msg received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
+
+                # Sends ACK
+                sequence_number = 0
+                acknowledgment_number = 0
+                window = 0
+                body = b''
+
+                # S A F R - SYN ACK FIN RST
+                flags = 4  # 0 1 0 0 ACK flag
+
+                msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
+                receiver_socket.sendto(msg, sender_address)
+                print("ACK sent")
+                print("Shutting down..")
+                receiver_socket.close()
+                sys.exit()
         else:
             print("Something was received, but it was not an ACK", syn_or_ack)
             sys.exit()
