@@ -127,43 +127,48 @@ def send_format(file, seq):
 def stop_and_wait_c():
     # CLIENT
     alldata = b'e' * 6344
-    # Send the content of the requested file to the server
-    for i in range(0, len(alldata) % 1460):
-        sequence_number = 1
-        acknowledgment_number = 0
-        flags = 0  # we are not going to set any flags when we send a data packet
-        window = 0  # window value should always be sent from the receiver-side
+    sequence = 1
+# Send the content of the requested file to the server
+    # While loop to assure sending
+    while True:
+        try:
 
-        # creates a packet with sequence number 1
-        print('\n\ncreating a packet')
-        body = alldata[:1460]
-        print(f'app data for size ={len(body)}')
-        # msg now holds a packet, including our custom header and data
-        msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
+            sequence_number = sequence
+            acknowledgment_number = 0
+            window = 0  # window value should always be sent from the receiver-side
 
-        # While loop to assure sending
-        while True:
-            if len(alldata) / 1460 > 1:
-                body = alldata[(1460 * (sequence_number - 1)):(1460 * sequence_number)]
-            # Last sequence
+            print('\n\ncreating a packet')
+            if sequence < (len(alldata) - 1) // 1460:
+                body = alldata[(1460 * (sequence - 1)):(1460 * sequence)]
+                flags = 0
             else:
-                body = alldata[(1460 * (sequence_number - 1)):]
+                # Last sequence
+                body = alldata[(1460 * (sequence - 1)):]  # takes last bit of data
                 flags = 2
                 print("Last sequence!")
+
+
+            print(f'app data for size ={len(body)}')
+            msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
 
             # Send packet and set the timer
             sender_socket.sendto(msg, receiver_address)
             sender_socket.settimeout(0.5)
 
-            try:
-                # listens for ack from server that the packet has been recevied
-                ack_msg = sender_socket.recv(12)
-                seq, ack, flags, win = parse_header(ack_msg)  # it's an ack message with only the header
+            # listens for ack from server that the packet has been recevied
+            ack_msg = sender_socket.recv(12)
+            seq, ack, flags, win = parse_header(ack_msg)  # it's an ack message with only the header
 
-                ack = sequence_number
+            sequence = seq + 1
 
-            except ConnectionError as e:
-                print(e, "ack timed out")
+            SYN, ACK, FIN = parse_flags(flags)
+
+            if FIN and ACK:
+                sender_socket.close()
+
+
+        except ConnectionError as e:
+            print(e, "ack timed out")
 
 
 def stop_and_wait_s():
@@ -190,7 +195,7 @@ def stop_and_wait_s():
         print(f'seq={seq}, ack={ack}, flags={flags}, recevier-window={win}')
         SYN, ACK, FIN = parse_flags(flags)
 
-        if ACK:
+        if seq > 0:
             if seq == sequence + 1:
                 data.append(msg[12:].decode())  # Stores decoded data
                 sequence += 1  # Increments progress
@@ -214,7 +219,7 @@ def stop_and_wait_s():
             # Preparing FIN ACK
             body = b''
             sequence_number = 0
-            acknowledgment_number = 1
+            acknowledgment_number = 0
             window = 0
 
             # 0 1 1 0
