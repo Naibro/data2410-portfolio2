@@ -153,7 +153,12 @@ def stop_and_wait_c():
             msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
 
             # Send packet and set the timer
-            sender_socket.sendto(msg, receiver_address)
+            test_done = True  # A test skipping the sending of packet number 2 once
+            if sequence == 2:
+                test_done = False
+            if args.test != 1 or test_done:
+                sender_socket.sendto(msg, receiver_address)
+
             sender_socket.settimeout(0.5)
 
             # listens for ack from server that the packet has been recevied
