@@ -6,8 +6,8 @@
     Qs:
     Should the test-cases be 3 larger test-cases including multiple smaller tests? (e.g. -t 1 will . . .
 '''
-
 from struct import *
+import time
 import socket
 import argparse
 import sys
@@ -42,9 +42,6 @@ args = parser.parse_args()  # Start the argument parser and its arguments
 
 header_format = '!IIHH'
 
-
-# print the header size: total = 12
-# print(f'size of the header = {calcsize(header_format)}')
 
 
 # A function that checks that the IP-address is valid
@@ -111,12 +108,9 @@ def parse_header(header):
 def parse_flags(flags):
     # we only parse the first 3 fields because we're not
     # using rst in our implementation
-    # syn = flags & (1 << 3)
-    # ack = flags & (1 << 2)
-    # fin = flags & (1 << 1)
-    syn = flags // 8
-    ack = flags % 8 // 4
-    fin = flags % 4 // 2
+    syn = flags & (1 << 3)
+    ack = flags & (1 << 2)
+    fin = flags & (1 << 1)
     return syn, ack, fin
 
 
@@ -126,26 +120,33 @@ def send_format(file, seq):
 
 def stop_and_wait_c():
     # CLIENT
-    alldata = b'e' * 6344
-    sequence = 1
+    #file = open(args.file, "rb")
+    #data = file.read()
+    #file.close()
+    data = b'e' * (2*1460+1)  # File to be transferred
+    sequence = 1  # Needed for the first sequence
+    totalsequences = (len(data) - 1) // 1460 + 1
 # Send the content of the requested file to the server
     # While loop to assure sending
     while True:
         try:
-
             sequence_number = sequence
             acknowledgment_number = 0
             window = 0  # window value should always be sent from the receiver-side
 
-            print('\n\ncreating a packet')
-            if sequence < (len(alldata) - 1) // 1460:
-                body = alldata[(1460 * (sequence - 1)):(1460 * sequence)]
+            if sequence < totalsequences:
+                print('\ncreating a packet')
+                body = data[(1460 * (sequence - 1)):(1460 * sequence)]
                 flags = 0
-            else:
+            elif sequence == totalsequences:
                 # Last sequence
-                body = alldata[(1460 * (sequence - 1)):]  # takes last bit of data
+                body = data[(1460 * (sequence - 1)):]  # takes last bit of data
                 flags = 2
-                print("Last sequence!")
+                print("\nLast packet!")
+            elif sequence > totalsequences:
+                print("\nAll data sent")
+                return
+
 
 
             print(f'app data for size ={len(body)}')
@@ -159,13 +160,10 @@ def stop_and_wait_c():
             ack_msg = sender_socket.recv(12)
             seq, ack, flags, win = parse_header(ack_msg)  # it's an ack message with only the header
 
-            sequence = seq + 1
+            sequence = ack + 1
 
             SYN, ACK, FIN = parse_flags(flags)
-
-            if FIN and ACK:
-                sender_socket.close()
-
+            print(f"Received ack# {ack}")
 
         except ConnectionError as e:
             print(e, "ack timed out")
@@ -192,16 +190,17 @@ def stop_and_wait_s():
         msg, sender_address = receiver_socket.recvfrom(1472)
         header_from_msg = msg[:12]
         seq, ack, flags, win = parse_header(header_from_msg)
-        print(f'seq={seq}, ack={ack}, flags={flags}, recevier-window={win}')
+        print(f'\n\nseq={seq}, ack={ack}, flags={flags}, recevier-window={win}')
         SYN, ACK, FIN = parse_flags(flags)
 
         if seq > 0:
             if seq == sequence + 1:
-                data.append(msg[12:].decode())  # Stores decoded data
+                print("Correct packet received")
+                data.append(msg[12:])  # Stores decoded data
                 sequence += 1  # Increments progress
             # Preparing ack (repeats ack if previous if-statement wasn't true
             body = b''
-            print('\n\nCreating an acknowledgment packet:')
+            print('\nCreating an acknowledgment packet:')
             print(f'this is an empty packet with no data ={len(body)}')
 
             sequence_number = 0
@@ -216,26 +215,14 @@ def stop_and_wait_s():
 
             receiver_socket.sendto(msg, sender_address)
         elif FIN:
-            # Preparing FIN ACK
-            body = b''
-            sequence_number = 0
-            acknowledgment_number = 0
-            window = 0
-
-            # 0 1 1 0
-            flags = 6
-
-            msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
-
-            print('Sends FIN ACK and closes connection')
-            # Sends the FIN ACK, compresses data, and closes connection
-            receiver_socket.sendto(msg, sender_address)
-            data = data.join('')
-            receiver_socket.close()
+            print("Transfer finished")
+            return b''.join(data)
 
 
 def GBN_c():
     pass
+
+
 
 
 def GBN_s():
@@ -292,7 +279,7 @@ elif args.client:
         seq, ack, flags, win = parse_header(syn_ack_msg)  # SYN ACK -> only header with flags set to: 1 1 0 0
         SYN, ACK, FIN = parse_flags(flags)
 
-        if SYN == 1 and ACK == 1:
+        if SYN and ACK:
             print(f"SYN ACK received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
 
             sequence_number = 0
@@ -322,9 +309,6 @@ elif args.client:
         GBN_c()
     elif args.reliability == "SR":
         SR_c()
-    #Fjerne hele else-statementen?
-    else:
-        print("Du er god hvis du greier å komme hit. Faen meg skriv en metode")
 
     # Closing of the connection
     sequence_number = 0
@@ -335,23 +319,27 @@ elif args.client:
     # S A F R - SYN ACK FIN RST
     flags = 2  # 0 0 1 0  FIN flag
     msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
-    sender_socket.sendto(msg, receiver_address)
-    print("FIN sent")
 
-    ack, sender_address = sender_socket.recvfrom(12)
+    deadline = time.time() + 5000
+    while deadline > time.time():
+        sender_socket.sendto(msg, receiver_address)
+        print("FIN sent")
 
-    # Parsing the header
-    seq, ack, flags, win = parse_header(ack)  # ACK -> only header with flags set to: 0 1 0 0
-    SYN, ACK, FIN = parse_flags(flags)
+        #sender_socket.settimeout(0.2)
+        ack_msg = sender_socket.recv(12)
 
-    if ACK == 1:
-        print(f"ACK received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
-        print("Shutting down..")
-        sender_socket.close()
-        sys.exit()
-    else:
-        print("Something was received, but it was not an ACK:", ACK)
-        sys.exit()
+        # Parsing the header
+        seq, ack, flags, win = parse_header(ack_msg)  # ACK -> only header with flags set to: 0 1 0 0
+        SYN, ACK, FIN = parse_flags(flags)
+
+        if ACK:
+            print(f"ACK received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
+            print("Shutting down..")
+            sender_socket.close()
+            sys.exit()
+
+    print("Something was received, but it was not an ACK:", ACK)
+    sys.exit()
 
 # RECEIVER SOCKET (SERVER) #
 elif args.server:
@@ -383,7 +371,7 @@ elif args.server:
         seq, ack, flags, win = parse_header(syn_or_ack)  # SYN -> only header with flags set to: 1 0 0 0
         SYN, ACK, FIN = parse_flags(flags)
 
-        if SYN == 1:
+        if SYN:
             print(f"SYN received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
 
             # Sends SYN ACK
@@ -399,30 +387,21 @@ elif args.server:
             msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
             receiver_socket.sendto(msg, sender_address)
             print("SYN ACK sent")
-        elif ACK == 1:
-            print(f"ACK received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
+        elif ACK:
             print("Ready to receive a file!")
 
+            data = ''
             if args.reliability == "stop-and-wait":
-                stop_and_wait_s()
+                data = stop_and_wait_s()
             elif args.reliability == "GBN":
-                GBN_s()
+                data = GBN_s()
             elif args.reliability == "SR":
-                SR_s()
-            # Fjerne hele else-statementen?
-            else:
-                print("Du er god hvis du greier å komme hit. Faen meg skriv en metode")
+                data = SR_s()
 
-            # Closing the connection
-            fin_msg, sender_address = receiver_socket.recvfrom(12)
+            with open("transferred_image.txt", "wb") as image:
+                image.write(data)
 
-            # Parsing the header
-            seq, ack, flags, win = parse_header(fin_msg)  # FIN -> only header with flags set to: 0 0 1 0
-            SYN, ACK, FIN = parse_flags(flags)
-
-            if FIN == 1:
-                print(f"FIN msg received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
-
+            if data:
                 # Sends ACK
                 sequence_number = 0
                 acknowledgment_number = 0
@@ -434,8 +413,8 @@ elif args.server:
 
                 msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
                 receiver_socket.sendto(msg, sender_address)
-                print("ACK sent")
-                print("Shutting down..")
+
+                print("ACK sent - Shutting down..")
                 receiver_socket.close()
                 sys.exit()
         else:
