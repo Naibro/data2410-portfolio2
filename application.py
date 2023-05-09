@@ -162,10 +162,10 @@ def stop_and_wait_c():
             # Send packet and set the timer
             sender_socket.sendto(msg, receiver_address)
 
-        try:
             # Set timeout
             sender_socket.settimeout(0.5)
 
+        try:
             # listens for ack from server that the packet has been received
             ack_msg = sender_socket.recv(12)
             seq, ack, flags, win = parse_header(ack_msg)  # it's an ack message with only the header
@@ -178,7 +178,7 @@ def stop_and_wait_c():
                     sequence += 1
 
         except socket.timeout:
-            print(f"ACK not received - resending packet #{sequence}")
+            print(f"Timed out: ACK not received - resending packet #{sequence}")
             continue
 
 
@@ -232,7 +232,7 @@ def stop_and_wait_s():
 
             msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
 
-            # Skips ack #4 (skip_ack) if the respective test is active
+            # Skips ack #4 (skip_ack) if the respective test is active triggering a retransmission
             if skip and sequence == skip_ack:
                 skip = False  # To keep it from skipping multiple times
                 print(f"Skipping ACK #{sequence}")
@@ -390,62 +390,64 @@ elif args.server:
     # ESTABLISHING CONNECTION #
     while True:
         # Waits for the SYN from client
-        syn_or_ack, sender_address = receiver_socket.recvfrom(12)
+        try:
+            syn_or_ack, sender_address = receiver_socket.recvfrom(12)
 
-        # Parsing the header
-        seq, ack, flags, win = parse_header(syn_or_ack)  # SYN -> only header with flags set to: 1 0 0 0
-        SYN, ACK, FIN = parse_flags(flags)
+            # Parsing the header
+            seq, ack, flags, win = parse_header(syn_or_ack)  # SYN -> only header with flags set to: 1 0 0 0
+            SYN, ACK, FIN = parse_flags(flags)
 
-        if SYN:
-            print(f"SYN received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
+            if SYN:
+                print(f"SYN received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
 
-            # Sends SYN ACK
-            sequence_number = 0
-            acknowledgment_number = 0  # an ack for the last sequence
-            window = 0  # window value should always be sent from the receiver-side
-            body = b''
-
-            # S A F R - SYN ACK FIN RST
-            flags = 12  # 1 1 0 0  SYN ACK flag
-
-            # Sends SYN ACK
-            msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
-            receiver_socket.sendto(msg, sender_address)
-            print("SYN ACK sent")
-            receiver_socket.settimeout(0.5)
-        elif ACK:
-            print("Ready to receive a file!")
-
-            data = ''
-            if args.reliability == "stop-and-wait":
-                data = stop_and_wait_s()
-            elif args.reliability == "GBN":
-                data = GBN_s()
-            elif args.reliability == "SR":
-                data = SR_s()
-
-            with open("picture-recv.jpg", "wb") as f:
-                f.write(data)
-
-            if data:
-                # Sends ACK
+                # Sends SYN ACK
                 sequence_number = 0
-                acknowledgment_number = 0
-                window = 0
+                acknowledgment_number = 0  # an ack for the last sequence
+                window = 0  # window value should always be sent from the receiver-side
                 body = b''
 
                 # S A F R - SYN ACK FIN RST
-                flags = 4  # 0 1 0 0 ACK flag
+                flags = 12  # 1 1 0 0  SYN ACK flag
 
+                # Sends SYN ACK
                 msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
-                receiver_socket.sendto(msg, sender_address)
+                # receiver_socket.sendto(msg, sender_address)
+                print("Couldn't send SYN ACK")
+                receiver_socket.settimeout(0.5)
+            elif ACK:
+                print("Ready to receive a file!")
 
-                print("ACK sent - Shutting down..")
-                receiver_socket.close()
-                sys.exit()
-        else:
+                data = ''
+                if args.reliability == "stop-and-wait":
+                    data = stop_and_wait_s()
+                elif args.reliability == "GBN":
+                    data = GBN_s()
+                elif args.reliability == "SR":
+                    data = SR_s()
+
+                with open("picture-recv.jpg", "wb") as f:
+                    f.write(data)
+
+                if data:
+                    # Sends ACK
+                    sequence_number = 0
+                    acknowledgment_number = 0
+                    window = 0
+                    body = b''
+
+                    # S A F R - SYN ACK FIN RST
+                    flags = 4  # 0 1 0 0 ACK flag
+
+                    msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
+                    receiver_socket.sendto(msg, sender_address)
+
+                    print("ACK sent")
+                    receiver_socket.close()
+                    sys.exit("Shutting down..")
+                    
+        except socket.timeout:
             print("Timed out: Did not receive an ACK")
-            sys.exit()
+            sys.exit("Shutting down..")
 
 # If neither the -s nor -c flag is specified (except reliability), the system will also exit
 else:
