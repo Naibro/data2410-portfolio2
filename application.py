@@ -121,10 +121,14 @@ def send_format(file, seq):
 def stop_and_wait_c():
     # CLIENT
     with open(args.file, 'rb') as file:
-        data = file.read()
+        img = file.read()
+
+    data = []
+    # Turns the data into a list of elements with length 1460
+    for i in range(0, len(img), 1460):
+        data.append(img[i:i+1460])
 
     # data = b'e' * (6344)  # File to be transferred
-    totalsequences = (len(data) - 1) // 1460 + 1  # Total number of packets/sequences
     sequence = 1  # Needed for the first sequence
     acknowledgment_number = 0
     window = 0
@@ -137,16 +141,13 @@ def stop_and_wait_c():
 
     # Send the content of the requested file to the server
     while True:
-        if sequence < totalsequences:
+        if sequence <= len(data):
             print(f'\ncreating a packet #{sequence}')
-            body = data[(1460 * (sequence - 1)):(1460 * sequence)]
-            flags = 0
-        elif sequence == totalsequences:
-            # Last sequence
-            body = data[(1460 * (sequence - 1)):]  # takes last bit of data
-            flags = 2
-            print("\nLast packet!")
-        elif sequence > totalsequences:
+            # Extracts next data-sequence
+            body = data[sequence-1]
+            # adds a FIN flag if it is the last sequence
+            flags = 0 if sequence == len(data) else 2
+        elif sequence > len(data):
             print("\nAll data sent")
             return
 
