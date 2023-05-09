@@ -411,8 +411,8 @@ elif args.server:
 
                 # Sends SYN ACK
                 msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
-                # receiver_socket.sendto(msg, sender_address)
-                print("Couldn't send SYN ACK")
+                receiver_socket.sendto(msg, sender_address)
+                #print("Couldn't send SYN ACK")
                 receiver_socket.settimeout(0.5)
             elif ACK:
                 print("Ready to receive a file!")
