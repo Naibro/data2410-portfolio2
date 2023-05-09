@@ -21,7 +21,7 @@ parser = argparse.ArgumentParser(
 
 # Arguments used for the client/sender
 parser.add_argument('-c', '--client', action='store_true', help='enable client mode')
-parser.add_argument('-f', '--file', type=str, help='input a file to be sent')
+parser.add_argument('-f', '--file', type=str, choices=['picture.jpg'], help='input a file to be sent')
 
 # Arguments used for the server/receiver
 parser.add_argument('-s', '--server', action='store_true', help='enable server mode')
@@ -120,11 +120,10 @@ def send_format(file, seq):
 
 def stop_and_wait_c():
     # CLIENT
-    # file = open(args.file, "rb")
-    # data = file.read()
-    # file.close()
+    with open(args.file, 'rb') as file:
+        data = file.read()
 
-    data = b'e' * (6344)  # File to be transferred
+    # data = b'e' * (6344)  # File to be transferred
     totalsequences = (len(data) - 1) // 1460 + 1  # Total number of packets/sequences
     sequence = 1  # Needed for the first sequence
     acknowledgment_number = 0
@@ -294,7 +293,7 @@ elif args.client:
 
     # Setting timeout
     sender_socket.settimeout(0.5)
-    print("Setting timeout..")
+    print("Setting timeout: 0.5s")
 
     try:
         # Try to receive SYN ACK from server
@@ -320,11 +319,8 @@ elif args.client:
             sender_socket.sendto(msg, receiver_address)
             print("ACK sent")
             print("Connection established..")
-        else:
-            print("Something was received, but it was not SYN ACK", syn_ack_msg)
-            sys.exit()
-    except Exception as e:
-        print("Didn't receive a SYN ACK", e)
+    except socket.timeout:
+        print("Timed out: Didn't receive a SYN ACK")
         sys.exit()
 
     # When a connection is established, the chosen -r argument will start its respective method
@@ -346,28 +342,29 @@ elif args.client:
     msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
 
     # deadline = time.time() + 5000
-    # sender_socket.settimeout(0.2)
-    while deadline > time.time():
-        sender_socket.sendto(msg, receiver_address)
-        print("FIN sent")
+    # deadline > time.time()
+    sender_socket.settimeout(0.5)
+    while True:
+        try:
+            sender_socket.sendto(msg, receiver_address)
+            print("FIN sent")
 
-        
-        ack_msg = sender_socket.recv(12)
+            ack_msg = sender_socket.recv(12)
 
-        # Parsing the header
-        seq, ack, flags, win = parse_header(ack_msg)  # ACK -> only header with flags set to: 0 1 0 0
-        SYN, ACK, FIN = parse_flags(flags)
+            # Parsing the header
+            seq, ack, flags, win = parse_header(ack_msg)  # ACK -> only header with flags set to: 0 1 0 0
+            SYN, ACK, FIN = parse_flags(flags)
 
-        if ACK and ack == 0:
-            print(f"ACK received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
-            print("Shutting down..")
-            sender_socket.close()
-            tid = time.time() - start
-            print(f"Tid: {tid}")
+            if ACK and ack == 0:
+                print(f"ACK received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
+                print("Shutting down..")
+                sender_socket.close()
+                tid = time.time() - start
+                print(f"Tid: {tid}")
+                sys.exit()
+        except socket.timeout:
+            print("Timed out: Did not receive a FIN ACK")
             sys.exit()
-
-    print("Did not receive a FIN ACK")
-    sys.exit()
 
 # RECEIVER SOCKET (SERVER) #
 elif args.server:
@@ -415,6 +412,7 @@ elif args.server:
             msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
             receiver_socket.sendto(msg, sender_address)
             print("SYN ACK sent")
+            receiver_socket.settimeout(0.5)
         elif ACK:
             print("Ready to receive a file!")
 
@@ -426,7 +424,7 @@ elif args.server:
             elif args.reliability == "SR":
                 data = SR_s()
 
-            with open("text.txt", "wb") as f:
+            with open("picture-recv.jpg", "wb") as f:
                 f.write(data)
 
             if data:
@@ -440,13 +438,13 @@ elif args.server:
                 flags = 4  # 0 1 0 0 ACK flag
 
                 msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
-                # receiver_socket.sendto(msg, sender_address)
+                receiver_socket.sendto(msg, sender_address)
 
                 print("ACK sent - Shutting down..")
                 receiver_socket.close()
                 sys.exit()
         else:
-            print("Something was received, but it was not an ACK", syn_or_ack)
+            print("Timed out: Did not receive an ACK")
             sys.exit()
 
 # If neither the -s nor -c flag is specified (except reliability), the system will also exit
