@@ -27,7 +27,7 @@ You can also send a specific number of bytes with the -n flag like this:
 
 # Arguments used for the client/sender
 parser.add_argument('-c', '--client', action='store_true', help='enable client mode')
-parser.add_argument('-f', '--file', type=str, choices=['picture.jpg'], help='input a file to be sent')
+parser.add_argument('-f', '--file', type=str, choices=['picture.gif'], help='input a file to be sent')
 
 # Arguments used for the server/receiver
 parser.add_argument('-s', '--server', action='store_true', help='enable server mode')
