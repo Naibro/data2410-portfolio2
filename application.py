@@ -1,12 +1,11 @@
-'''
-    #Utility functions: 1) to create a packet of 1472 bytes with header (12 bytes) (sequence number, acknowledgement number,
-    #flags and receiver window) and applicaton data (1460 bytes), and 2) to parse
+"""
+    #Utility functions: 1) to create a packet of 1472 bytes with header (12 bytes) (sequence number,
+    acknowledgement number, #flags and receiver window) and application data (1460 bytes), and 2) to parse
     # the extracted header from the application data.
 
     Qs:
-    should packet #1 be discarded by the receiver in GBN if #2 wasn't received
-    should window size be fixed, as of the Github readme or set by the receiver
-'''
+    problem with socket.settimeout(0.5) in SYN-segment
+"""
 from struct import *
 import time
 import socket
@@ -31,7 +30,7 @@ parser.add_argument('-p', '--port', type=int, default=8088, help='allows selecti
 parser.add_argument('-i', '--ipaddress', type=str, default='127.0.0.1', help='allows selection of an ip-address')
 parser.add_argument('-r', '--reliability', choices=['stop-and-wait', 'GBN', 'SR'], required=True,
                     help='allows selection of different reliability functions')
-parser.add_argument('-t', '--test', type=str, choices=['skip_ack', 'skip_seq'],
+parser.add_argument('-t', '--test', type=str, choices=['skip_ack', 'skip_seq', 'send_old'],
                     help='selection of which test case to run')
 
 args = parser.parse_args()  # Start the argument parser and its arguments
@@ -116,28 +115,33 @@ def parse_flags(flags):
 
 def stop_and_wait_c():
     # CLIENT
-    with open(args.file, 'rb') as file:
-        img = file.read()
-
     data = []
-    # Turns the data into a list of elements with length 1460
-    for i in range(0, len(img), 1460):
-        data.append(img[i:i + 1460])
-
     sequence = 1  # Needed for the first sequence
     body = b''
     flags = 0
 
-    # window and acknowledgement number in the header is always 0 and fixed for the client
-    acknowledgment_number = 0
-    window = 0
+    with open(args.file, 'rb') as file:
+        img = file.read()
 
+    # Turns the data into a list of elements with length 1460
+    for i in range(0, len(img), 1460):
+        data.append(img[i:i + 1460])
+
+    # Test case skip_seq
     if args.test == 'skip_seq':
         skip = True  # A skip to be done
-        skip_seq = 10  # Skips sequence number 2
+        skip_seq = 2410  # Skips sequence number 2410
     else:
         skip = False
         skip_seq = 0
+
+    # Test case send_old
+    if args.test == 'send_old':
+        send_old = True  # Old sequence is to be sent
+        old_seq = 2410  # When old sequence will be sent
+    else:
+        send_old = False
+        old_seq = 0
 
     # Send the content of the requested file to the server
     while True:
@@ -153,15 +157,22 @@ def stop_and_wait_c():
             return 1460 * len(data)
 
         print(f'data size = {len(body)}')
-        msg = create_packet(sequence, acknowledgment_number, flags, window, body)
+        # Acknowledgement number and window are fixed and static for the client
+        msg = create_packet(sequence, 0, flags, 0, body)
 
         # Skips sequence #2 (skip_seq) if test 1 is active
         if skip and sequence == skip_seq:
             skip = False  # To keep it from skipping multiple times
+            print("Packet sending skipped")
+        # Sends an old sequence #2 as test case after sending packet #2410 (same data, but different header)
+        elif send_old and sequence == old_seq:
+            send_old = False  # To keep it from skipping multiple times
+            msg = create_packet(2, 0, flags, 0, body)
+            sender_socket.sendto(msg, receiver_address)
+            print("Old sequence sent")
         else:
             # Send packet
             sender_socket.sendto(msg, receiver_address)
-
 
         # Sets timeout
         sender_socket.settimeout(0.5)
@@ -172,10 +183,11 @@ def stop_and_wait_c():
             SYN, ACK, FIN = parse_flags(flags)
 
             if ACK:
-                print(f"ACK received #{sequence}")
                 if sequence == ack:
                     print(f"Correct ACK received #{sequence}")
                     sequence += 1
+                else:
+                    print("Wrong ACK received")
 
         except socket.timeout:
             print(f"Timed out: ACK not received - resending packet #{sequence}")
@@ -187,14 +199,10 @@ def reactive_server():
     data = []  # Destination for received data, whose length allows for track of progress
     sequence = 0  # Receive progress
 
-    # window and sequence number in the header is always 0 for stop_and_wait and fixed for the server
-    sequence_number = 0
-    window = 0
-
     # Test case skip_ack to skip the sending of a specific ack
     if args.test == 'skip_ack':
         skip = True  # A skip to be done
-        skip_ack = 4  # Skips ack number 4
+        skip_ack = 2410  # Skips ack number 4
     else:
         skip = False
         skip_ack = 0
@@ -207,7 +215,7 @@ def reactive_server():
         # Parsing the header
         header_from_msg = msg[:12]
         seq, ack, flags, win = parse_header(header_from_msg)
-        print(f'\n\nseq={seq}, ack={ack}, flags={flags}, receiver-window={win}')
+        print(f'\nseq={seq}, ack={ack}, flags={flags}, receiver-window={win}')
         SYN, ACK, FIN = parse_flags(flags)
 
         if seq > 0:
@@ -216,14 +224,8 @@ def reactive_server():
                 data.append(msg[12:])  # Stores decoded data
                 sequence += 1  # Increments progress
 
-            # Preparing ack (DUPACK if previous if-statement wasn't true
-            body = b''
-            print(f'Creating an acknowledgment packet #{seq}')
-
-            # 0 1 0 0  ack flag set
-            flags = 4
-
-            msg = create_packet(sequence_number, sequence, flags, window, body)
+            # Sequence number, flags, window, and body are fixed for the server
+            msg = create_packet(0, sequence, 4, 0, b'')
 
             # Skips ack #4 (skip_ack) if the respective test is active triggering a retransmission
             if skip and sequence == skip_ack:
@@ -231,18 +233,18 @@ def reactive_server():
                 print(f"Skipping ACK #{sequence}")
             else:
                 # Sends ack
+                print(f'Sending acknowledgment packet #{sequence}')
                 receiver_socket.sendto(msg, sender_address)
 
         elif FIN:
             print("Transfer finished")
-            return b''.join(data)
+            return b''.join(data)  # Joins data from array and returns it
 
 
 def GBN_c():
     # CLIENT
     data = [] # In order to store the data
     sequence = 1  # Needed for the first sequence
-    acknowledgment_number = 0  # Acknoledgement number in the header is fixed for client
     window = 5  # Window is fixed
 
     with open(args.file, 'rb') as file:
@@ -271,7 +273,8 @@ def GBN_c():
             body = data[sequence - 1 + i]
             # adds a FIN flag if it is the last sequence
             flags = 0 if sequence <= len(data) else 2
-            msg = create_packet(sequence, acknowledgment_number, flags, window, body)
+            # Acknowledgement number and window in the header are fixed and static for the client
+            msg = create_packet(sequence, 0, flags, 0, body)
 
             # Skips sequence #2 (skip_seq) if test 1 is active
             if skip and sequence == skip_seq:
@@ -303,7 +306,7 @@ def GBN_c():
 
                     # adds a FIN flag if it is the last sequence
                     flags = 0 if sequence <= len(data) else 2
-                    msg = create_packet(sequence, acknowledgment_number, flags, window, body)
+                    msg = create_packet(sequence, 0, flags, 0, body)
 
                     # Skips sequence #skip_seq (skip_seq) if test 1 is active
                     if skip and sequence == skip_seq:
@@ -316,7 +319,7 @@ def GBN_c():
                     sender_socket.settimeout(0.5)
 
         except socket.timeout:
-            print(f"Timed out: ACK not received for packet #{sequence}")
+            print(f"\nTimed out: ACK not received for packet #{sequence}")
             continue
 
 
