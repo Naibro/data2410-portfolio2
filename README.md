@@ -59,4 +59,5 @@ parser.add_argument('-t', '--test', type=str, choices=['skip_ack', 'skip_seq'],
 THINGS TO NOTICE
 *****************
 
-?
+The picture used for testing was originally 'picture.gif', but we changed the code to utilize 'safi.jpg' and
+write to a new file called 'safi-recv.jpg' instead.
