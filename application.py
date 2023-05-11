@@ -5,6 +5,7 @@
 
     Qs:
     problem with socket.settimeout(0.5) in SYN-segment
+    RTT with or without empty packets
 """
 from struct import *
 import time
@@ -41,6 +42,7 @@ args = parser.parse_args()  # Start the argument parser and its arguments
 # see the struct official page for more info
 
 header_format = '!IIHH'
+rtt = 0.125  # Default rtt (sets time-outs to 500 ms)
 
 
 # A function that checks that the IP-address is valid
@@ -119,6 +121,7 @@ def stop_and_wait_c():
     sequence = 1  # Needed for the first sequence
     body = b''
     flags = 0
+    rtt = 0.125
 
     with open(args.file, 'rb') as file:
         img = file.read()
@@ -159,7 +162,11 @@ def stop_and_wait_c():
         print(f'data size = {len(body)}')
         # Acknowledgement number and window are fixed and static for the client
         msg = create_packet(sequence, 0, flags, 0, body)
-
+        """
+        # Starts measuring RTT before sending of packet
+        rtt_start_time = time.time()
+        rtt_start_seq = sequence
+        """
         # Skips sequence #2 (skip_seq) if test 1 is active
         if skip and sequence == skip_seq:
             skip = False  # To keep it from skipping multiple times
@@ -175,13 +182,18 @@ def stop_and_wait_c():
             sender_socket.sendto(msg, receiver_address)
 
         # Sets timeout
-        sender_socket.settimeout(0.5)
+        sender_socket.settimeout(4 * rtt)
         try:
             # listens for ack from server that the packet has been received
             ack_msg = sender_socket.recv(12)
             seq, ack, flags, win = parse_header(ack_msg)  # it's an ack message with only the header
             SYN, ACK, FIN = parse_flags(flags)
-
+            """
+            # Sets rtt if correct packet is received
+            if rtt_start_seq == ack:
+                rtt = time.time() - rtt_start_time
+                print(f"RTT: {(rtt * 1000):.2f} ms")
+            """
             if ACK:
                 if sequence == ack:
                     print(f"Correct ACK received #{sequence}")
@@ -243,7 +255,7 @@ def reactive_server():
 
 def GBN_c():
     # CLIENT
-    data = [] # In order to store the data
+    data = []  # In order to store the data
     sequence = 1  # Needed for the first sequence
     window = 5  # Window is fixed
 
@@ -266,7 +278,7 @@ def GBN_c():
     while True:
         print(f"\nCreating {window} packets")
         for i in range(0, window):
-            print(f"Creating window-packet #{i+1}")
+            print(f"Creating window-packet #{i + 1}")
             if sequence + i > len(data):
                 break
             # Extracts next data-sequence
@@ -283,7 +295,7 @@ def GBN_c():
                 # Send packet and set the timeout
                 sender_socket.sendto(msg, receiver_address)
 
-            sender_socket.settimeout(0.5)
+            sender_socket.settimeout(4 * rtt)
         print()
         try:
             while True:
@@ -316,7 +328,7 @@ def GBN_c():
                         sender_socket.sendto(msg, receiver_address)
 
                     # Sets timeout
-                    sender_socket.settimeout(0.5)
+                    sender_socket.settimeout(4 * rtt)
 
         except socket.timeout:
             print(f"\nTimed out: ACK not received for packet #{sequence}")
@@ -324,11 +336,145 @@ def GBN_c():
 
 
 def SR_c():
-    return 0
+        # CLIENT
+        data = []  # In order to store the data
+        sequence = 1  # Needed for the first sequence
+        window = 5  # Window is fixed
+        frame = [False] * window  # Frame to keep track of acked sequences within the window
+
+        with open(args.file, 'rb') as file:
+            img = file.read()
+
+        # Turns the data into a list of elements with length 1460
+        for i in range(0, len(img), 1460):
+            data.append(img[i:i + 1460])
+
+        # Initialising for test case skip_seq
+        if args.test == 'skip_seq':
+            skip = True  # A skip to be done
+            skip_seq = 2400  # Skips sequence number n
+        else:
+            skip = False
+            skip_seq = 0
+
+        # Send the content of the requested file to the server
+        while True:
+            print(f"\nCreating {window} packets")
+            for i in range(0, window):
+                print(f"Creating window-packet #{i + 1}")
+                if sequence + i > len(data):
+                    break
+                # Signals that an ack is missing
+                frame[i] = False
+                # Extracts next data-sequence
+                body = data[sequence - 1 + i]
+                # adds a FIN flag if it is the last sequence
+                flags = 0 if sequence <= len(data) else 2
+                # Acknowledgement number and window in the header are fixed and static for the client
+                msg = create_packet(sequence, 0, flags, 0, body)
+
+                # Skips sequence #2 (skip_seq) if test 1 is active
+                if skip and sequence == skip_seq:
+                    skip = False  # To keep it from skipping multiple times
+                else:
+                    # Send packet and set the timeout
+                    sender_socket.sendto(msg, receiver_address)
+
+                sender_socket.settimeout(4 * rtt)
+
+            try:
+                while True:
+                    # Listens for ack from server that the packet has been received
+                    ack_msg = sender_socket.recv(12)
+                    seq, ack, flags, win = parse_header(ack_msg)  # it's an ack message with only the header
+                    SYN, ACK, FIN = parse_flags(flags)
+
+                    # Stores ack if it is within the window
+                    if ACK and sequence <= ack and sequence + window > ack:
+                        print(f"Correct ACK received #{sequence} - Frame #{(ack-sequence)}")
+                        # Stores ack within the frame
+                        frame[ack-sequence] = True
+                    # Moves the window and sends the last element after each move
+                    while frame[0]:
+                        print("window moves - sends packet")
+                        frame.pop(0)
+                        frame[window-1] = False
+                        sequence += 1
+                        # All data sent and all ACKs are received - Transfer is done
+                        if sequence + 1 > len(data):
+                            print("\nAll data sent")
+                            # Returns data size for calculation of throughput value
+                            return 1460 * len(data)
+
+                        # Extracts next data-sequence
+                        body = data[sequence - 1 + window]
+
+                        # adds a FIN flag if it is the last sequence
+                        flags = 0 if sequence <= len(data) else 2
+                        msg = create_packet(sequence + window, 0, flags, 0, body)
+
+                        # Skips sequence #skip_seq (skip_seq) if test 1 is active
+                        if skip and sequence == skip_seq:
+                            skip = False  # To keep it from skipping multiple times
+                        else:
+                            # Send packet
+                            sender_socket.sendto(msg, receiver_address)
+
+                        # Sets timeout
+                        sender_socket.settimeout(4 * rtt)
+
+            except socket.timeout:
+                print(f"\nTimed out: ACK not received for packet #{sequence}")
+                continue
 
 
 def SR_s():
-    return b''
+    # SERVER - Selective Repeat
+    data = []  # Destination for received data, whose length allows for track of progress
+    sequence = 0  # Receive progress
+    window = 5
+
+    # Test case skip_ack to skip the sending of a specific ack
+    if args.test == 'skip_ack':
+        skip = True  # A skip to be done
+        skip_ack = 2410  # Skips ack number 4
+    else:
+        skip = False
+        skip_ack = 0
+
+    # Retrieves all data
+    while True:
+        # Receiving from client
+        msg, sender_address = receiver_socket.recvfrom(1472)
+
+        # Parsing the header
+        header_from_msg = msg[:12]
+        seq, ack, flags, win = parse_header(header_from_msg)
+        print(f'\nseq={seq}, ack={ack}, flags={flags}, receiver-window={win}')
+        SYN, ACK, FIN = parse_flags(flags)
+
+        if seq > 0:
+            if seq >= sequence + 1 and seq < sequence + window + 1:
+                print(f"Correct packet received #{seq}")
+                data[seq - 1] = msg[12:]  # Stores decoded data
+                if seq == sequence + 1:
+                    sequence += 1  # Increments progress
+
+            # Sequence number, flags, window, and body are fixed for the server
+            msg = create_packet(0, seq, 4, 0, b'')
+
+            # Skips ack #4 (skip_ack) if the respective test is active triggering a retransmission
+            if skip and sequence == skip_ack:
+                skip = False  # To keep it from skipping multiple times
+                print(f"Skipping ACK #{sequence}")
+            else:
+                # Sends ack
+                print(f'Sending acknowledgment packet #{sequence}')
+                receiver_socket.sendto(msg, sender_address)
+
+        elif FIN:
+            print("Transfer finished")
+            return b''.join(data)  # Joins data from array and returns it
 
 
 # Global variables #
@@ -362,8 +508,8 @@ elif args.client:
     print("SYN sent")
 
     # Setting timeout
-    sender_socket.settimeout(0.5)
-    print("Setting timeout: 0.5s")
+    sender_socket.settimeout(4 * rtt)
+    print("Setting timeout: 4RTTs")
 
     try:
         # Try to receive SYN ACK from server
@@ -389,6 +535,9 @@ elif args.client:
             sender_socket.sendto(msg, receiver_address)
             print("ACK sent")
             print("Connection established..")
+        else:
+            print("Packet received: ")
+
     except socket.timeout:
         print("Timed out: Didn't receive a SYN ACK")
         sys.exit()
@@ -418,9 +567,7 @@ elif args.client:
     flags = 2  # 0 0 1 0  FIN flag
     msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
 
-    # deadline = time.time() + 5000
-    # deadline > time.time()
-    sender_socket.settimeout(0.5)
+    sender_socket.settimeout(4 * rtt)
     while True:
         try:
             sender_socket.sendto(msg, receiver_address)
@@ -489,7 +636,7 @@ elif args.server:
                 msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
                 receiver_socket.sendto(msg, sender_address)
                 print("SYN ACK sent")
-                receiver_socket.settimeout(0.6)
+                receiver_socket.settimeout(4 * rtt)
             elif ACK:
                 print("Ready to receive a file!")
 
