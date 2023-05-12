@@ -405,9 +405,11 @@ def SR_c():
                     # adds a FIN flag if it is the last sequence
                     flags = 0 if sequence <= len(data) else 2
                     # Extracts next data-sequence
-                    body = data[sequence - 1 + window]
-
-                    msg = create_packet(sequence + window - 1, 0, flags, 0, body)
+                    if sequence - 1 + window < len(data): # Checks if the index is less than the length of data
+                        body = data[sequence - 1 + window]
+                        msg = create_packet(sequence + window - 1, 0, flags, 0, body)
+                    else:
+                        break # Breaks at the end of data
 
                     # Skips sequence #skip_seq (skip_seq) if test 1 is active
                     if skip and sequence == skip_seq:
