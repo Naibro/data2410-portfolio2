@@ -18,7 +18,7 @@ For example: `python3 application.py -s -r stop-and-wait`.
 This will give you a running server using the stop-and-wait method.
 
 After running the server, the client can be run the same way, but needs a file name to be transferred using the `-f` flag:
-`python3 application.py -c -r stop-and-wait -f picture.gif`. This will give you a running client using the
+`python3 application.py -c -r stop-and-wait -f <filename>`. This will give you a running client using the
 stop-and-wait method and the specified file will be sent.
 
 > **Both the server and the client** need to use the same reliable method in order to work properly.
@@ -28,6 +28,8 @@ ip-address '127.0.0.1' and port '8088' will be used. The program also checks if 
 
 It is also possible to run the server and the client with an artificial test by specifying one of two test cases
 (skip_ack or skip_seq) using the `-t` or the `--test` flag, but this flag doesn't have to be used.
+For example `python3 application.py -c -f <filename> -t skip_seq`. This will skip a sequence, but the
+program will recover.
 **skip_ack** is used by the server and **skip_seq** is used by the client.
 
 Also by specifying the --help or -h flag, helpful messages can be shown.
