@@ -34,6 +34,7 @@ args = parser.parse_args()  # Start the argument parser and its arguments
 header_format = '!IIHH'
 rtt = 0.125  # Default rtt (sets time-outs to 500 ms)
 
+# FUNCTIONS #
 
 # A function that checks if the IP-address is valid
 def check_ip(address):
@@ -486,7 +487,7 @@ check_port(args.port)
 ip = args.ipaddress
 port = args.port
 
-# If using both the --s and the --c flag (and reliability), the system will exit
+# If using both the --s and the --c flag (AND reliability), the system will exit
 if args.server and args.client:
     print("Error: you can not run both in server and client mode")
     sys.exit()
