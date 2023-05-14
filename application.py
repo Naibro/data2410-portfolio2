@@ -31,11 +31,14 @@ args = parser.parse_args()  # Start the argument parser and its arguments
 # MAIN PROGRAM #
 ################
 
+# GLOBAL VARIABLES #
 header_format = '!IIHH'
 rtt = 0.125  # Default rtt (sets time-outs to 500 ms)
 
+
 # FUNCTIONS #
 
+# Helper functions #
 # A function that checks if the IP-address is valid
 def check_ip(address):
     # Takes an IP-address in
@@ -78,6 +81,7 @@ def check_port(val):
     return value  # Lastly, the checked port will be returned and used in the program
 
 
+# A function which creates a packet (data and header - 1472 bytes)
 def create_packet(seq, ack, flags, win, data):
     # creates a packet with header information and application data
     # the input arguments are sequence number, acknowledgment number
@@ -89,10 +93,11 @@ def create_packet(seq, ack, flags, win, data):
     # once we create a header, we add the application data to create a packet
     # of 1472 bytes
     packet = header + data
-    # print(f'packet containing header + data of size {len(packet)}')  # just to show the length of the packet
+    # print(f'packet containing header + data of size {len(packet)}')  # to show the length of the packet
     return packet
 
 
+# A function that parses/unpacks a header
 def parse_header(header):
     # taks a header of 12 bytes as an argument,
     # unpacks the value based on the specified header_format
@@ -102,6 +107,7 @@ def parse_header(header):
     return header_from_msg
 
 
+# A function that parses/unpacks flags
 def parse_flags(flags):
     # we only parse the first 3 fields because we're not
     # using rst in our implementation
@@ -111,6 +117,9 @@ def parse_flags(flags):
     return syn, ack, fin
 
 
+# Main functions #
+
+# Stop-and-wait (client)
 def stop_and_wait_c():
     # CLIENT
     data = []
@@ -202,6 +211,7 @@ def stop_and_wait_c():
             continue
 
 
+# Server function for both stop-and-wait and GBN
 def reactive_server():
     # SERVER - used for stop-and-wait() and GBN()
     data = []  # Destination for received data, whose length allows for track of progress
@@ -249,6 +259,7 @@ def reactive_server():
             return b''.join(data)  # Joins data from array and returns it
 
 
+# Go-Back-N (client)
 def GBN_c():
     # CLIENT
     data = []  # In order to store the data
@@ -331,6 +342,7 @@ def GBN_c():
             continue
 
 
+# Selective repeat (client)
 def SR_c():
     # CLIENT
     data = []  # In order to store the data
@@ -401,16 +413,16 @@ def SR_c():
                         print("\nAll data sent")
                         # Returns data size for calculation of throughput value
                         return 1460 * len(data)
-                    #if sequence + window > len(data):
-                        #window -= 1
+                    # if sequence + window > len(data):
+                    # window -= 1
                     # adds a FIN flag if it is the last sequence
                     flags = 0 if sequence <= len(data) else 2
                     # Extracts next data-sequence
-                    if sequence - 1 + window < len(data): # Checks if the index is less than the length of data
+                    if sequence - 1 + window < len(data):  # Checks if the index is less than the length of data
                         body = data[sequence - 1 + window]
                         msg = create_packet(sequence + window - 1, 0, flags, 0, body)
                     else:
-                        break # Breaks at the end of data
+                        break  # Breaks at the end of data
 
                     # Skips sequence #skip_seq (skip_seq) if test 1 is active
                     if skip and sequence == skip_seq:
@@ -427,6 +439,7 @@ def SR_c():
                 continue
 
 
+# Selective repeat (server)
 def SR_s():
     # SERVER - Selective Repeat
     data = []  # Destination for received data, whose length allows for track of progress
@@ -481,7 +494,7 @@ def SR_s():
             return b''.join(data)  # Joins data from array and returns it
 
 
-# Global variables #
+# Variables used for invoking the server/client #
 check_ip(args.ipaddress)
 check_port(args.port)
 ip = args.ipaddress
@@ -646,8 +659,8 @@ elif args.server:
                     data = reactive_server()
                 else:
                     data = SR_s()
-                    
-                dest_name = 'picture-recv.gif' if args.file == 'picture.gif' else 'picture-recv.jpg'
+
+                dest_name = 'picture-recv.gif' if args.file == 'picture.gif' else 'safi-recv.jpg'
                 with open(dest_name, "wb") as f:
                     f.write(data)
 
