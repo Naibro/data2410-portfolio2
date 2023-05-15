@@ -4,9 +4,9 @@ DRTP - application.py
 
 Transfers a file between a client and a server using DRTP
 		
-**********
-HOW TO USE
-**********
+**************
+### HOW TO USE
+**************
 
 The program requires the use of two running instances in order to start a file transfer.
 One with the `--server` flag, and the other with `--client` flag, although the server
@@ -36,15 +36,16 @@ program will recover.
 Also by specifying the --help or -h flag, helpful messages can be shown.
 For example: `python3 application.py -h`.
 
-******************
-ARGPARSE ARGUMENTS
-******************
-### Arguments used for the client/sender
+**********************
+### ARGPARSE ARGUMENTS
+**********************
+
+#### Arguments used for the client/sender
 - parser.add_argument('-c', '--client', action='store_true', help='enable client mode')
 - parser.add_argument('-f', '--file', type=str, choices=['picture.jpg','safi.jpg'], help='input a file to be sent', required=True)
-### Arguments used for the server/receiver
+#### Arguments used for the server/receiver
 - parser.add_argument('-s', '--server', action='store_true', help='enable server mode')
-### Arguments common for both server and client
+#### Arguments common for both server and client
 - parser.add_argument('-p', '--port', type=int, default=8088, help='allows selection of a port', metavar='[1024-65535]')
 - parser.add_argument('-i', '--ipaddress', type=str, default='127.0.0.1', help='allows selection of an ip-address')
 - parser.add_argument('-r', '--reliability', choices=['stop-and-wait', 'GBN', 'SR'], required=True,
@@ -54,8 +55,9 @@ ARGPARSE ARGUMENTS
 
 **skip_ack** is used for the server side and the **skip_seq** is used for the client side.
 
-*****************
-THINGS TO NOTICE
-*****************
-The picture used for testing was originally 'picture.jpg', but we changed the code to utilize 'safi.jpg' as well as 
+********************
+### THINGS TO NOTICE
+********************
+
+- The picture used for testing was originally 'picture.jpg', but we changed the code to utilize 'safi.jpg' as well as 
 changing the name of the written file to 'safi-recv.jpg'.

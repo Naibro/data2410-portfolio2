@@ -661,9 +661,9 @@ elif args.server:
                 else:
                     data = SR_s()
 
-                dest_name = 'picture-recv.jpg' if args.file == 'picture.jpg' else 'safi-recv.jpg'
-                with open(dest_name, "wb") as f:
-                    f.write(data)
+                # Writes or overwrites the data to a new file
+                with open('safi-recv.jpg', "wb") as file:
+                    file.write(data)
 
                 if data:
                     # Sends ACK
