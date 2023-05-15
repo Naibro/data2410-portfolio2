@@ -21,7 +21,8 @@ After running the server, the client can be run the same way, but needs a file n
 `python3 application.py -c -r stop-and-wait -f <filename>`. This will give you a running client using the
 stop-and-wait method and the specified file will be sent.
 
-> **Both the server and the client** need to use the same reliable method in order to work properly.
+> **Both the server and the client** need to use the same reliable method in order to work properly. 
+> Writing something else is not accounted for.
 
 The same goes for the `-i --ipaddress` and `-p --port` flags. If they are not specified however, the default
 ip-address '127.0.0.1' and port '8088' will be used. The program also checks if the ip-address and the port are valid.
@@ -40,7 +41,7 @@ ARGPARSE ARGUMENTS
 ******************
 ### Arguments used for the client/sender
 - parser.add_argument('-c', '--client', action='store_true', help='enable client mode')
-- parser.add_argument('-f', '--file', type=str, choices=['picture.jpg'], help='input a file to be sent', required=True)
+- parser.add_argument('-f', '--file', type=str, choices=['picture.jpg','safi.jpg'], help='input a file to be sent', required=True)
 ### Arguments used for the server/receiver
 - parser.add_argument('-s', '--server', action='store_true', help='enable server mode')
 ### Arguments common for both server and client
@@ -56,5 +57,5 @@ ARGPARSE ARGUMENTS
 *****************
 THINGS TO NOTICE
 *****************
-The picture used for testing was originally 'picture.gif', but we changed the code to utilize 'safi.jpg' and
-the new file that is written to is called 'safi-recv.jpg' instead.
+The picture used for testing was originally 'picture.jpg', but we changed the code to utilize 'safi.jpg' as well as 
+changing the name of the written file to 'safi-recv.jpg'.

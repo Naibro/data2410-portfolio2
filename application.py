@@ -12,7 +12,7 @@ parser = argparse.ArgumentParser(
 
 # Arguments used for the client/sender
 parser.add_argument('-c', '--client', action='store_true', help='enable client mode')
-parser.add_argument('-f', '--file', type=str, choices=['picture.gif', 'safi.jpg'], help='input a file to be sent')
+parser.add_argument('-f', '--file', type=str, choices=['picture.jpg', 'safi.jpg'], help='input a file to be sent')
 
 # Arguments used for the server/receiver
 parser.add_argument('-s', '--server', action='store_true', help='enable server mode')
@@ -596,7 +596,8 @@ elif args.client:
 
             if ACK and ack == 0:
                 print(f"ACK received: flags set: syn-> {SYN}, ack-> {ACK}, fin-> {FIN}")
-                print(f"\nThroughput value over {lapsed_time:.2f} ms is {throughput:.2f} Mbps")
+                print(f"\nElapsed time: {lapsed_time:.2f}ms")
+                print(f"Throughput: {throughput:.2f}Mbps")
                 print("Shutting down..")
                 sender_socket.close()
                 sys.exit()
@@ -660,7 +661,7 @@ elif args.server:
                 else:
                     data = SR_s()
 
-                dest_name = 'picture-recv.gif' if args.file == 'picture.gif' else 'safi-recv.jpg'
+                dest_name = 'picture-recv.jpg' if args.file == 'picture.jpg' else 'safi-recv.jpg'
                 with open(dest_name, "wb") as f:
                     f.write(data)
 
