@@ -22,7 +22,7 @@ parser.add_argument('-p', '--port', type=int, default=8088, help='allows selecti
 parser.add_argument('-i', '--ipaddress', type=str, default='127.0.0.1', help='allows selection of an ip-address')
 parser.add_argument('-r', '--reliability', choices=['stop-and-wait', 'GBN', 'SR'], required=True,
                     help='allows selection of different reliability functions')
-parser.add_argument('-t', '--test', type=str, choices=['skip_ack', 'skip_seq', 'send_old'],
+parser.add_argument('-t', '--test', type=str, choices=['skip_ack', 'skip_seq'],
                     help='selection of which test case to run')
 
 args = parser.parse_args()  # Start the argument parser and its arguments
@@ -128,6 +128,7 @@ def stop_and_wait_c():
     flags = 0
     rtt = 0.125
 
+    # Opens the file
     with open(args.file, 'rb') as file:
         img = file.read()
 
@@ -138,18 +139,10 @@ def stop_and_wait_c():
     # Test case skip_seq
     if args.test == 'skip_seq':
         skip = True  # A skip to be done
-        skip_seq = 2410  # Skips sequence number 2410
+        skip_seq = len(data) - 7  # Skips length of sequence number minus 7
     else:
         skip = False
         skip_seq = 0
-
-    # Test case send_old
-    if args.test == 'send_old':
-        send_old = True  # Old sequence is to be sent
-        old_seq = 2410  # When old sequence will be sent
-    else:
-        send_old = False
-        old_seq = 0
 
     # Send the content of the requested file to the server
     while True:
@@ -176,12 +169,6 @@ def stop_and_wait_c():
         if skip and sequence == skip_seq:
             skip = False  # To keep it from skipping multiple times
             print("Packet sending skipped")
-        # Sends an old sequence #2 as test case after sending packet #2410 (same data, but different header)
-        elif send_old and sequence == old_seq:
-            send_old = False  # To keep it from skipping multiple times
-            msg = create_packet(2, 0, flags, 0, body)
-            sender_socket.sendto(msg, receiver_address)
-            print("Old sequence sent")
         else:
             # Send packet
             sender_socket.sendto(msg, receiver_address)
@@ -260,7 +247,7 @@ def reactive_server():
 
 
 # Go-Back-N (client)
-def GBN_c():
+def gbn_c():
     # CLIENT
     data = []  # In order to store the data
     sequence = 1  # Needed for the first sequence
@@ -276,7 +263,7 @@ def GBN_c():
     # Initialising for test case skip_seq
     if args.test == 'skip_seq':
         skip = True  # A skip to be done
-        skip_seq = 2400  # Skips sequence number n
+        skip_seq = len(data) - 7  # Skips length of sequence number minus 7
     else:
         skip = False
         skip_seq = 0
@@ -343,7 +330,7 @@ def GBN_c():
 
 
 # Selective repeat (client)
-def SR_c():
+def sr_c():
     # CLIENT
     data = []  # In order to store the data
     sequence = 1  # Needed for the first sequence
@@ -360,7 +347,7 @@ def SR_c():
     # Initialising for test case skip_seq
     if args.test == 'skip_seq':
         skip = True  # A skip to be done
-        skip_seq = 2400  # Skips sequence number n
+        skip_seq = len(data) - 7  # Skips length of sequence number minus 7
     else:
         skip = False
         skip_seq = 0
@@ -440,7 +427,7 @@ def SR_c():
 
 
 # Selective repeat (server)
-def SR_s():
+def sr_s():
     # SERVER - Selective Repeat
     data = []  # Destination for received data, whose length allows for track of progress
     sequence = 0  # Receive progress
@@ -563,9 +550,9 @@ elif args.client:
     if args.reliability == "stop-and-wait":
         data_size = stop_and_wait_c()
     elif args.reliability == "GBN":
-        data_size = GBN_c()
+        data_size = gbn_c()
     elif args.reliability == "SR":
-        data_size = SR_c()
+        data_size = sr_c()
 
     # Lapsed time in ms
     lapsed_time = (time.time() - start_time) * 1000
@@ -659,7 +646,7 @@ elif args.server:
                 if args.reliability != "SR":
                     data = reactive_server()
                 else:
-                    data = SR_s()
+                    data = sr_s()
 
                 # Writes or overwrites the data to a new file
                 with open('safi-recv.jpg', "wb") as file:
