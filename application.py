@@ -5,7 +5,10 @@ import socket  # Import of socket module
 import time  # In order to utilize time
 import sys  # In order to terminate the program
 
+###################
 # ARGUMENT PARSER #
+###################
+
 parser = argparse.ArgumentParser(
     prog='DRTP application',
     description='Transfers a file between a client and a server using DRTP')
@@ -35,10 +38,12 @@ args = parser.parse_args()  # Start the argument parser and its arguments
 header_format = '!IIHH'
 rtt = 0.125  # Default rtt (sets time-outs to 500 ms)
 
-
+#############
 # FUNCTIONS #
+#############
 
 # Helper functions #
+
 # A function that checks if the IP-address is valid
 def check_ip(address):
     # Takes an IP-address in
@@ -196,54 +201,6 @@ def stop_and_wait_c():
         except socket.timeout:
             print(f"Timed out: ACK not received - resending packet #{sequence}")
             continue
-
-
-# Server function for both stop-and-wait and GBN
-def reactive_server():
-    # SERVER - used for stop-and-wait() and GBN()
-    data = []  # Destination for received data, whose length allows for track of progress
-    sequence = 0  # Receive progress
-
-    # Test case skip_ack to skip the sending of a specific ack
-    if args.test == 'skip_ack':
-        skip = True  # A skip to be done
-        skip_ack = 5  # Skips ack #5
-    else:
-        skip = False
-        skip_ack = 0
-
-    # Retrieves all data
-    while True:
-        # Receiving from client
-        msg, sender_address = receiver_socket.recvfrom(1472)
-
-        # Parsing the header
-        header_from_msg = msg[:12]
-        seq, ack, flags, win = parse_header(header_from_msg)
-        print(f'\nseq={seq}, ack={ack}, flags={flags}, receiver-window={win}')
-        SYN, ACK, FIN = parse_flags(flags)
-
-        if seq > 0:
-            if seq == sequence + 1:
-                print(f"Correct packet received #{seq}")
-                data.append(msg[12:])  # Stores decoded data
-                sequence += 1  # Increments progress
-
-            # Sequence number, flags, window, and body are fixed for the server
-            msg = create_packet(0, sequence, 4, 0, b'')
-
-            # Skips ack (skip_ack) if the respective test is active triggering a retransmission
-            if skip and sequence == skip_ack:
-                skip = False  # To keep it from skipping multiple times
-                print(f"Skipping ACK #{sequence}")
-            else:
-                # Sends ack
-                print(f'Sending acknowledgment packet #{sequence}')
-                receiver_socket.sendto(msg, sender_address)
-
-        elif FIN:
-            print("Transfer finished")
-            return b''.join(data)  # Joins data from array and returns it
 
 
 # Go-Back-N (client)
@@ -424,6 +381,54 @@ def sr_c():
             except socket.timeout:
                 print(f"\nTimed out: ACK not received for packet #{sequence}")
                 continue
+
+
+# Server function for both stop-and-wait and GBN
+def reactive_server():
+    # SERVER - used for stop-and-wait() and GBN()
+    data = []  # Destination for received data, whose length allows for track of progress
+    sequence = 0  # Receive progress
+
+    # Test case skip_ack to skip the sending of a specific ack
+    if args.test == 'skip_ack':
+        skip = True  # A skip to be done
+        skip_ack = 5  # Skips ack #5
+    else:
+        skip = False
+        skip_ack = 0
+
+    # Retrieves all data
+    while True:
+        # Receiving from client
+        msg, sender_address = receiver_socket.recvfrom(1472)
+
+        # Parsing the header
+        header_from_msg = msg[:12]
+        seq, ack, flags, win = parse_header(header_from_msg)
+        print(f'\nseq={seq}, ack={ack}, flags={flags}, receiver-window={win}')
+        SYN, ACK, FIN = parse_flags(flags)
+
+        if seq > 0:
+            if seq == sequence + 1:
+                print(f"Correct packet received #{seq}")
+                data.append(msg[12:])  # Stores decoded data
+                sequence += 1  # Increments progress
+
+            # Sequence number, flags, window, and body are fixed for the server
+            msg = create_packet(0, sequence, 4, 0, b'')
+
+            # Skips ack (skip_ack) if the respective test is active triggering a retransmission
+            if skip and sequence == skip_ack:
+                skip = False  # To keep it from skipping multiple times
+                print(f"Skipping ACK #{sequence}")
+            else:
+                # Sends ack
+                print(f'Sending acknowledgment packet #{sequence}')
+                receiver_socket.sendto(msg, sender_address)
+
+        elif FIN:
+            print("Transfer finished")
+            return b''.join(data)  # Joins data from array and returns it
 
 
 # Selective repeat (server)
