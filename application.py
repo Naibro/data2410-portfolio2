@@ -38,12 +38,12 @@ args = parser.parse_args()  # Start the argument parser and its arguments
 header_format = '!IIHH'
 rtt = 0.125  # Default rtt (sets time-outs to 500 ms)
 
+
 #############
 # FUNCTIONS #
 #############
 
 # Helper functions #
-
 # A function that checks if the IP-address is valid
 def check_ip(address):
     # Takes an IP-address in
@@ -123,7 +123,6 @@ def parse_flags(flags):
 
 
 # Main functions #
-
 # Stop-and-wait (client)
 def stop_and_wait_c():
     # CLIENT
