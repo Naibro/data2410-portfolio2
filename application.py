@@ -209,7 +209,6 @@ def gbn_c():
     data = []  # In order to store the data
     sequence = 1  # Needed for the first sequence
     window = 5  # Window is fixed
-    frame = [False] * window  # Frame to keep track of acked sequences within the window
 
     with open(args.file, 'rb') as file:
         img = file.read()
@@ -227,28 +226,29 @@ def gbn_c():
         skip_seq = 0
 
     # Send the content of the requested file to the server
+    #while True:
+    print(f"\nCreating {window} packets")
+    for i in range(0, window):
+        print(f"Creating window-packet #{i + 1}")
+        if sequence + i > len(data):
+            break
+        # Extracts next data-sequence
+        body = data[sequence - 1 + i]
+        # adds a FIN flag if it is the last sequence
+        flags = 0 if sequence <= len(data) else 2
+        # Acknowledgement number and window in the header are fixed and static for the client
+        msg = create_packet(sequence, 0, flags, 0, body)
+
+        # Skips sequence #2 (skip_seq) if test 1 is active
+        if skip and sequence == skip_seq:
+            skip = False  # To keep it from skipping multiple times
+        else:
+            # Send packet and set the timeout
+            sender_socket.sendto(msg, receiver_address)
+
+        sender_socket.settimeout(4 * rtt)
+    print()
     while True:
-        print(f"\nCreating {window} packets")
-        for i in range(sequence, sequence + window):
-            print(f"Creating window-packet #{i + 1}")
-            if i > len(data):
-                break
-            # Extracts next data-sequence
-            body = data[sequence - 1 + i]
-            # adds a FIN flag if it is the last sequence
-            flags = 0 if sequence <= len(data) else 2
-            # Acknowledgement number and window in the header are fixed and static for the client
-            msg = create_packet(sequence, 0, flags, 0, body)
-
-            # Skips sequence #2 (skip_seq) if test 1 is active
-            if skip and sequence == skip_seq:
-                skip = False  # To keep it from skipping multiple times
-            else:
-                # Send packet and set the timeout
-                sender_socket.sendto(msg, receiver_address)
-
-            sender_socket.settimeout(4 * rtt)
-        print()
         try:
             while True:
                 # Listens for ack from server that the packet has been received
@@ -283,7 +283,21 @@ def gbn_c():
                     sender_socket.settimeout(4 * rtt)
 
         except socket.timeout:
-            print(f"\nTimed out: ACK not received for packet #{sequence}")
+            print(f"\nTimed out: ACK not received - resending from packet #{sequence}")
+            for i in range(0, window):
+                print(f"Creating window-packet #{sequence + i}")
+                if sequence + i > len(data):
+                    break
+                # Extracts next data-sequence
+                body = data[sequence - 1 + i]
+                # adds a FIN flag if it is the last sequence
+                flags = 0 if sequence <= len(data) else 2
+                # Acknowledgement number and window in the header are fixed and static for the client
+                msg = create_packet(sequence, 0, flags, 0, body)
+
+                sender_socket.sendto(msg, receiver_address)
+                sender_socket.settimeout(4 * rtt)
+
             continue
 
 
@@ -399,6 +413,7 @@ def reactive_server():
 
     # Retrieves all data
     while True:
+        print("Receiving . . . ")
         # Receiving from client
         msg, sender_address = receiver_socket.recvfrom(1472)
 
@@ -643,7 +658,7 @@ elif args.server:
                 msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
                 receiver_socket.sendto(msg, sender_address)
                 print("SYN ACK sent")
-                receiver_socket.settimeout(1)  # Gives a 1-second room for ack to be received
+                receiver_socket.settimeout(5)  # Gives a 2-second room for ack to be received
             elif ACK:
                 print("Ready to receive a file!")
 
