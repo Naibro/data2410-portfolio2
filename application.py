@@ -209,6 +209,7 @@ def gbn_c():
     data = []  # In order to store the data
     sequence = 1  # Needed for the first sequence
     window = 5  # Window is fixed
+    frame = [False] * window  # Frame to keep track of acked sequences within the window
 
     with open(args.file, 'rb') as file:
         img = file.read()
@@ -228,9 +229,9 @@ def gbn_c():
     # Send the content of the requested file to the server
     while True:
         print(f"\nCreating {window} packets")
-        for i in range(0, window):
+        for i in range(sequence, sequence + window):
             print(f"Creating window-packet #{i + 1}")
-            if sequence + i > len(data):
+            if i > len(data):
                 break
             # Extracts next data-sequence
             body = data[sequence - 1 + i]
@@ -304,20 +305,18 @@ def sr_c():
     # Initialising for test case skip_seq
     if args.test == 'skip_seq':
         skip = True  # A skip to be done
-        skip_seq = 5  # Skips packet #5
+        skip_seq = 4  # Skips packet #5
     else:
         skip = False
         skip_seq = 0
 
-        # Send the content of the requested file to the server
-        # while True:
+    # Send the content of the requested file to the server
+    while True:
         print(f"\nCreating {window} packets")
         for i in range(0, window):
             print(f"Creating window-packet #{i + 1}")
-            if sequence + i > len(data):
+            if sequence + i > len(data) or frame[i]:
                 break
-            # Signals that an ack is missing
-            frame[i] = False
             # Extracts next data-sequence
             body = data[sequence - 1 + i]
             # adds a FIN flag if it is the last sequence
@@ -346,6 +345,7 @@ def sr_c():
                     print(f"Correct ACK received #{ack} - Frame #{(ack - sequence)}")
                     # Stores ack within the frame
                     frame[ack - sequence] = True
+
                 # Moves the window and sends the last element after each move
                 while frame[0]:
                     print("window moves - sends packet")
@@ -380,7 +380,7 @@ def sr_c():
 
             except socket.timeout:
                 print(f"\nTimed out: ACK not received for packet #{sequence}")
-                continue
+                break
 
 
 # Server function for both stop-and-wait and GBN
@@ -643,7 +643,7 @@ elif args.server:
                 msg = create_packet(sequence_number, acknowledgment_number, flags, window, body)
                 receiver_socket.sendto(msg, sender_address)
                 print("SYN ACK sent")
-                receiver_socket.settimeout(4 * rtt)
+                receiver_socket.settimeout(1)  # Gives a 1-second room for ack to be received
             elif ACK:
                 print("Ready to receive a file!")
 
