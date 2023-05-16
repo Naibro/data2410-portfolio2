@@ -22,7 +22,7 @@ After running the server, the client can be run the same way, but needs a file n
 stop-and-wait method and the specified file will be sent.
 
 > **Both the server and the client** need to use the same reliable method in order to work properly. 
-> Writing something else is not accounted for.
+> Inputting something else is not accounted for.
 
 The same goes for the `-i --ipaddress` and `-p --port` flags. If they are not specified however, the default
 ip-address '127.0.0.1' and port '8088' will be used. The program also checks if the ip-address and the port are valid.
@@ -31,7 +31,8 @@ It is also possible to run the server and the client with an artificial test by 
 (skip_ack or skip_seq) using the `-t` or the `--test` flag, but this flag doesn't have to be used.
 For example `python3 application.py -c -f <filename> -t skip_seq`. This will skip a sequence, but the
 program will recover.
-**skip_ack** is used by the server and **skip_seq** is used by the client.
+
+>**skip_ack** is used by the server and **skip_seq** is used by the client. Inputting differently is not accounted for.
 
 Also by specifying the --help or -h flag, helpful messages can be shown.
 For example: `python3 application.py -h`.

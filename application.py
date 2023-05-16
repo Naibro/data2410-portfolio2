@@ -139,7 +139,7 @@ def stop_and_wait_c():
     # Test case skip_seq
     if args.test == 'skip_seq':
         skip = True  # A skip to be done
-        skip_seq = len(data) - 7  # Skips length of sequence number minus 7
+        skip_seq = 5  # Skips packet #5
     else:
         skip = False
         skip_seq = 0
@@ -165,7 +165,7 @@ def stop_and_wait_c():
         rtt_start_time = time.time()
         rtt_start_seq = sequence
         """
-        # Skips sequence #2 (skip_seq) if test 1 is active
+        # Skips sequence (skip_seq) if test 1 is active
         if skip and sequence == skip_seq:
             skip = False  # To keep it from skipping multiple times
             print("Packet sending skipped")
@@ -207,7 +207,7 @@ def reactive_server():
     # Test case skip_ack to skip the sending of a specific ack
     if args.test == 'skip_ack':
         skip = True  # A skip to be done
-        skip_ack = 2410  # Skips ack number 4
+        skip_ack = 5  # Skips ack #5
     else:
         skip = False
         skip_ack = 0
@@ -232,7 +232,7 @@ def reactive_server():
             # Sequence number, flags, window, and body are fixed for the server
             msg = create_packet(0, sequence, 4, 0, b'')
 
-            # Skips ack #4 (skip_ack) if the respective test is active triggering a retransmission
+            # Skips ack (skip_ack) if the respective test is active triggering a retransmission
             if skip and sequence == skip_ack:
                 skip = False  # To keep it from skipping multiple times
                 print(f"Skipping ACK #{sequence}")
@@ -263,7 +263,7 @@ def gbn_c():
     # Initialising for test case skip_seq
     if args.test == 'skip_seq':
         skip = True  # A skip to be done
-        skip_seq = len(data) - 7  # Skips length of sequence number minus 7
+        skip_seq = 5  # Skips packet #5
     else:
         skip = False
         skip_seq = 0
@@ -347,7 +347,7 @@ def sr_c():
     # Initialising for test case skip_seq
     if args.test == 'skip_seq':
         skip = True  # A skip to be done
-        skip_seq = len(data) - 7  # Skips length of sequence number minus 7
+        skip_seq = 5  # Skips packet #5
     else:
         skip = False
         skip_seq = 0
@@ -437,7 +437,7 @@ def sr_s():
     # Test case skip_ack to skip the sending of a specific ack
     if args.test == 'skip_ack':
         skip = True  # A skip to be done
-        skip_ack = 2410  # Skips ack number 4
+        skip_ack = 5  # Skips ack #5
     else:
         skip = False
         skip_ack = 0
@@ -670,7 +670,7 @@ elif args.server:
                     sys.exit("Shutting down..")
 
         except socket.timeout:
-            print("Timed out: Did not receive an ACK")
+            print("Timed out: Did not receive packet or ACK")
             sys.exit("Shutting down..")
 
 # If neither the -s nor -c flag is specified (except reliability), the system will also exit
